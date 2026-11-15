@@ -15,5 +15,5 @@ jobs:
       - run: gradle assembleDebug
       - uses: actions/upload-artifact@v4
         with:
-          name: mini-games-apk
+          name: meadowbrook-farm-apk
           path: app/build/outputs/apk/debug/*.apk

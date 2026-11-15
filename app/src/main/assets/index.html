@@ -1,0 +1,183 @@
+<!doctype html>
+<html><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Meadowbrook Farm</title>
+<style>
+:root{--card:#fffaf0;--ink:#3b2a1a;--muted:#7a6650;--accent:#e8743b;--good:#4f9a3a;--line:#e5d6bc}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%;overflow:hidden;background:#9fd0f0;font-family:"Trebuchet MS",system-ui,sans-serif;color:var(--ink);user-select:none}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.top{position:fixed;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.pill{background:var(--card);border-radius:999px;padding:5px 12px;font-weight:bold;border:2px solid var(--line);font-size:14px}
+.panel{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:3px solid var(--line);border-radius:16px 16px 0 0;max-height:46%;display:flex;flex-direction:column}
+.tabs{display:flex;border-bottom:2px solid var(--line)}
+.tabs button{flex:1;padding:10px 4px;border:0;background:none;font:inherit;font-weight:bold;color:var(--muted)}
+.tabs button.on{color:var(--accent);box-shadow:inset 0 -3px 0 var(--accent)}
+.body{overflow-y:auto;padding:10px}
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:6px}
+.chip{border:2px solid var(--line);background:#fff;border-radius:10px;padding:6px;font:inherit;font-size:13px;color:var(--ink);text-align:center}
+.chip.on{border-color:var(--accent);background:#fff1e6}
+.chip:disabled{opacity:.45}
+.row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:7px 0;border-top:1px dashed var(--line);font-size:14px}
+.row:first-child{border-top:0}
+.btn{border:0;border-radius:10px;padding:8px 12px;background:var(--good);color:#fff;font:inherit;font-weight:bold;font-size:13px}
+.btn:disabled{background:#bdb3a2}
+.muted{color:var(--muted);font-size:12px}
+.hint{font-size:12px;color:var(--muted);margin:0 0 8px}
+#toast{position:fixed;left:50%;top:48px;transform:translateX(-50%);background:var(--ink);color:#fff;padding:7px 14px;border-radius:999px;font-weight:bold;font-size:14px;opacity:0;transition:opacity .2s;pointer-events:none;white-space:nowrap}
+#toast.on{opacity:1}
+</style></head><body>
+<canvas id="gl"></canvas>
+<div class="top"><span class="pill">🪙 <span id="coins">0</span></span><span class="pill">⭐ Lv <span id="lvl">1</span> · <span id="xp">0</span>/<span id="need">10</span></span></div>
+<div id="toast"></div>
+<div class="panel">
+<div class="tabs"><button data-t="seeds" class="on">Seeds</button><button data-t="barn">Barn</button><button data-t="orders">Orders</button><button data-t="shop">Shop</button></div>
+<div class="body" id="body"></div>
+</div>
+<script src="three.min.js"></script>
+<script src="OrbitControls.js"></script>
+<script>
+// ---------- Game rules ----------
+const CROPS={wheat:{e:'🌾',n:'Wheat',cost:1,time:8,lvl:1},corn:{e:'🌽',n:'Corn',cost:3,time:20,lvl:1},carrot:{e:'🥕',n:'Carrot',cost:5,time:35,lvl:2},tomato:{e:'🍅',n:'Tomato',cost:8,time:50,lvl:3},pumpkin:{e:'🎃',n:'Pumpkin',cost:14,time:80,lvl:4},berry:{e:'🍓',n:'Berries',cost:20,time:110,lvl:5}};
+const ANIMALS={hen:{e:'🐔',n:'Hen',feed:'wheat',out:'egg',time:25,price:60,lvl:2},cow:{e:'🐄',n:'Cow',feed:'corn',out:'milk',time:45,price:180,lvl:3},sheep:{e:'🐑',n:'Sheep',feed:'carrot',out:'wool',time:70,price:350,lvl:5}};
+const GOODS={egg:'🥚',milk:'🥛',wool:'🧶'};
+const VALUE={wheat:3,corn:7,carrot:12,tomato:18,pumpkin:30,berry:42,egg:16,milk:30,wool:50};
+const MAXPLOTS=16;
+const icon=k=>CROPS[k]?CROPS[k].e:GOODS[k];
+let S={coins:30,lvl:1,xp:0,plots:[null,null,null,null,null,null],inv:{wheat:3},animals:[],orders:[],sel:'wheat'};
+try{const s=JSON.parse(localStorage.getItem('meadow3d'));if(s&&s.plots)S=s}catch(e){}
+const save=()=>{try{localStorage.setItem('meadow3d',JSON.stringify(S))}catch(e){}};
+const need=()=>S.lvl*10, $=id=>document.getElementById(id);
+function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1600)}
+function addXP(n){S.xp+=n;while(S.xp>=need()){S.xp-=need();S.lvl++;toast('Level up! Level '+S.lvl)}}
+function give(k,n){S.inv[k]=(S.inv[k]||0)+(n||1)}
+function take(k,n){n=n||1;if((S.inv[k]||0)<n)return false;S.inv[k]-=n;if(!S.inv[k])delete S.inv[k];return true}
+function unlocked(k){if(CROPS[k])return CROPS[k].lvl<=S.lvl;for(const a in ANIMALS)if(ANIMALS[a].out===k)return ANIMALS[a].lvl<=S.lvl&&S.animals.some(x=>x.k===a);return false}
+function newOrder(){const pool=Object.keys(VALUE).filter(unlocked);const items={};const n=1+Math.floor(Math.random()*Math.min(3,1+S.lvl/2));
+for(let i=0;i<n;i++){const k=pool[Math.floor(Math.random()*pool.length)];items[k]=(items[k]||0)+1+Math.floor(Math.random()*3)}
+let v=0;for(const k in items)v+=VALUE[k]*items[k];return{items,coins:Math.round(v*1.4),xp:Math.round(v/4)+1}}
+while(S.orders.length<3)S.orders.push(newOrder());
+const plotCost=()=>50+(S.plots.length-6)*40;
+
+function tapPlot(i){const p=S.plots[i],now=Date.now();
+ if(!p){const c=CROPS[S.sel];if(S.coins<c.cost)return toast('Not enough coins');S.coins-=c.cost;S.plots[i]={k:S.sel,t:now}}
+ else if(now-p.t>=CROPS[p.k].time*1000){give(p.k,2);addXP(1+CROPS[p.k].lvl);S.plots[i]=null;toast('+2 '+CROPS[p.k].e+' '+CROPS[p.k].n)}
+ else toast(CROPS[p.k].n+': '+Math.ceil(CROPS[p.k].time-(now-p.t)/1000)+'s left');
+ save();syncScene();ui()}
+function tapAnimal(i){const a=S.animals[i],A=ANIMALS[a.k],now=Date.now();
+ if(a.t==null){if(!take(A.feed))return toast(A.n+' needs '+CROPS[A.feed].e+' '+CROPS[A.feed].n);a.t=now;toast('Fed the '+A.n)}
+ else if(now-a.t>=A.time*1000){give(A.out);addXP(3);a.t=null;toast('+1 '+GOODS[A.out])}
+ else toast(A.n+': '+Math.ceil(A.time-(now-a.t)/1000)+'s left');save();ui()}
+function buyPlot(){if(S.plots.length>=MAXPLOTS)return toast('Your farm is full');const c=plotCost();if(S.coins<c)return toast('A field costs '+c+' coins');S.coins-=c;S.plots.push(null);save();buildPlots();ui()}
+function buyAnimal(k){const A=ANIMALS[k];if(S.lvl<A.lvl||S.coins<A.price)return;if(S.animals.length>=9)return toast('The pen is full');S.coins-=A.price;S.animals.push({k,t:null});toast('A '+A.n+' joined the farm');save();buildAnimals();ui()}
+function deliver(i){const o=S.orders[i];for(const k in o.items)if((S.inv[k]||0)<o.items[k])return;for(const k in o.items)take(k,o.items[k]);S.coins+=o.coins;addXP(o.xp);toast('Delivered! +'+o.coins+' 🪙');S.orders[i]=newOrder();save();ui()}
+function skip(i){S.orders[i]=newOrder();save();ui()}
+function sell(k){if(!take(k))return;const v=Math.ceil(VALUE[k]*.6);S.coins+=v;toast('Sold for '+v+' 🪙');save();ui()}
+
+// ---------- Panel ----------
+let tab='seeds';
+document.querySelectorAll('.tabs button').forEach(b=>b.onclick=()=>{tab=b.dataset.t;document.querySelectorAll('.tabs button').forEach(x=>x.classList.toggle('on',x===b));ui()});
+function el(tag,cls,html){const e=document.createElement(tag);if(cls)e.className=cls;if(html!=null)e.innerHTML=html;return e}
+function ui(){$('coins').textContent=S.coins;$('lvl').textContent=S.lvl;$('xp').textContent=S.xp;$('need').textContent=need();
+ const b=$('body');b.innerHTML='';
+ if(tab==='seeds'){b.appendChild(el('p','hint','Pick a seed, then tap an empty field. Drag to turn the camera, pinch to zoom.'));const g=el('div','grid');
+  for(const k in CROPS){const c=CROPS[k],x=el('button','chip'+(S.sel===k?' on':''),S.lvl<c.lvl?'🔒 '+c.n+'<br><span class="muted">Level '+c.lvl+'</span>':c.e+' '+c.n+'<br><span class="muted">🪙'+c.cost+' · '+c.time+'s</span>');
+   x.disabled=S.lvl<c.lvl;x.onclick=()=>{S.sel=k;save();ui()};g.appendChild(x)}b.appendChild(g)}
+ if(tab==='barn'){const ks=Object.keys(S.inv);if(!ks.length)b.appendChild(el('p','hint','Your barn is empty. Harvest crops or collect from animals.'));
+  else{b.appendChild(el('p','hint','Tap an item to sell one for coins.'));const g=el('div','grid');ks.forEach(k=>{const x=el('button','chip',icon(k)+' × '+S.inv[k]+'<br><span class="muted">Sell +'+Math.ceil(VALUE[k]*.6)+'</span>');x.onclick=()=>sell(k);g.appendChild(x)});b.appendChild(g)}}
+ if(tab==='orders')S.orders.forEach((o,i)=>{const ok=Object.keys(o.items).every(k=>(S.inv[k]||0)>=o.items[k]);
+  const r=el('div','row','<div>'+Object.entries(o.items).map(([k,n])=>icon(k)+'×'+n+' <span class="muted">('+(S.inv[k]||0)+')</span>').join(' ')+'<br><span class="muted">🪙 '+o.coins+' · ⭐ '+o.xp+'</span></div>');
+  const g=el('div');g.style.cssText='display:flex;gap:4px';const d=el('button','btn','Deliver');d.disabled=!ok;d.onclick=()=>deliver(i);const s=el('button','btn','✕');s.style.background='#bdb3a2';s.onclick=()=>skip(i);g.append(d,s);r.appendChild(g);b.appendChild(r)});
+ if(tab==='shop'){const r=el('div','row','<div>🟫 New field<br><span class="muted">'+S.plots.length+' of '+MAXPLOTS+' fields</span></div>');const x=el('button','btn',S.plots.length>=MAXPLOTS?'Full':'🪙 '+plotCost());x.disabled=S.plots.length>=MAXPLOTS||S.coins<plotCost();x.onclick=buyPlot;r.appendChild(x);b.appendChild(r);
+  for(const k in ANIMALS){const A=ANIMALS[k],r=el('div','row','<div>'+A.e+' '+A.n+'<br><span class="muted">Eats '+CROPS[A.feed].e+', gives '+GOODS[A.out]+'</span></div>');const x=el('button','btn',S.lvl<A.lvl?'Level '+A.lvl:'🪙 '+A.price);x.disabled=S.lvl<A.lvl||S.coins<A.price;x.onclick=()=>buyAnimal(k);r.appendChild(x);b.appendChild(r)}}}
+
+// ---------- 3D world ----------
+const canvas=$('gl'),renderer=new THREE.WebGLRenderer({canvas,antialias:true});
+renderer.setPixelRatio(Math.min(2,devicePixelRatio));renderer.shadowMap.enabled=true;
+const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fd0f0);scene.fog=new THREE.Fog(0x9fd0f0,40,80);
+const cam=new THREE.PerspectiveCamera(45,1,.1,200);cam.position.set(16,22,24);
+const ctl=new THREE.OrbitControls(cam,canvas);ctl.target.set(0,0,5);ctl.enableDamping=true;ctl.maxPolarAngle=1.25;ctl.minDistance=8;ctl.maxDistance=40;ctl.enablePan=false;
+scene.add(new THREE.HemisphereLight(0xffffff,0x6a8a40,.65));
+const sun=new THREE.DirectionalLight(0xfff2d0,.9);sun.position.set(12,20,8);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);
+Object.assign(sun.shadow.camera,{left:-20,right:20,top:20,bottom:-20});scene.add(sun);
+const M=c=>new THREE.MeshLambertMaterial({color:c});
+function box(w,h,d,c,x,y,z,p){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;(p||scene).add(m);return m}
+function ball(r,c,x,y,z,p){const m=new THREE.Mesh(new THREE.SphereGeometry(r,10,8),M(c));m.position.set(x,y,z);m.castShadow=true;(p||scene).add(m);return m}
+function cone(r,h,c,x,y,z,p,seg){const m=new THREE.Mesh(new THREE.ConeGeometry(r,h,seg||8),M(c));m.position.set(x,y,z);m.castShadow=true;(p||scene).add(m);return m}
+// ground
+const ground=new THREE.Mesh(new THREE.CircleGeometry(60,40),M(0x7cc350));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+// barn
+const barn=new THREE.Group();box(5,3.2,4,0xc0392b,0,1.6,0,barn);
+const roof=new THREE.Mesh(new THREE.CylinderGeometry(2.9,2.9,4.3,3,1,false),M(0x5a3a2a));roof.rotation.z=Math.PI/2;roof.rotation.x=Math.PI/2;roof.rotation.set(0,0,0);
+roof.rotation.x=Math.PI/2;roof.rotation.z=Math.PI/2;roof.position.set(0,3.9,0);roof.scale.set(1,1,.62);roof.castShadow=true;barn.add(roof);
+box(1.8,2.2,.1,0xf5f0e6,0,1.1,2.03,barn);box(1.5,1.9,.12,0x8e2a20,0,1.05,2.06,barn);
+barn.position.set(-9,0,-6);barn.rotation.y=.5;scene.add(barn);
+// trees
+[[-15,8],[13,-9],[16,6],[-4,-13],[8,-14],[-17,-2],[18,14],[-12,15]].forEach(([x,z])=>{box(.5,1.6,.5,0x7a4b2a,x,.8,z);cone(1.6,3.2,0x3f8a3a,x,3,z);cone(1.2,2.4,0x4fa046,x,4.3,z)});
+// pond
+const pond=new THREE.Mesh(new THREE.CircleGeometry(3,24),M(0x5ab4e5));pond.rotation.x=-Math.PI/2;pond.position.set(11,.02,9);pond.scale.set(1.4,1,1);scene.add(pond);
+// animal pen (fence)
+const PEN={x:8,z:-3,w:8,d:7};
+for(let i=0;i<=PEN.w;i++){box(.18,1,.18,0xe8d9b5,PEN.x-PEN.w/2+i,.5,PEN.z-PEN.d/2);box(.18,1,.18,0xe8d9b5,PEN.x-PEN.w/2+i,.5,PEN.z+PEN.d/2)}
+for(let i=1;i<PEN.d;i++){box(.18,1,.18,0xe8d9b5,PEN.x-PEN.w/2,.5,PEN.z-PEN.d/2+i);box(.18,1,.18,0xe8d9b5,PEN.x+PEN.w/2,.5,PEN.z-PEN.d/2+i)}
+[.35,.75].forEach(y=>{box(PEN.w,.1,.08,0xe8d9b5,PEN.x,y,PEN.z-PEN.d/2);box(PEN.w,.1,.08,0xe8d9b5,PEN.x,y,PEN.z+PEN.d/2);box(.08,.1,PEN.d,0xe8d9b5,PEN.x-PEN.w/2,y,PEN.z);box(.08,.1,PEN.d,0xe8d9b5,PEN.x+PEN.w/2,y,PEN.z)});
+
+// fields
+const plotGroup=new THREE.Group();scene.add(plotGroup);let plotMeshes=[],cropGroups=[],buyTile=null;
+function plotPos(i){const col=i%4,row=Math.floor(i/4);return[-4.5+col*2.6,row*2.6-1]}
+function buildPlots(){while(plotGroup.children.length)plotGroup.remove(plotGroup.children[0]);plotMeshes=[];cropGroups=[];
+ S.plots.forEach((p,i)=>{const[x,z]=plotPos(i);const m=box(2.2,.3,2.2,0x8a5a35,x,.15,z,plotGroup);m.userData={plot:i};plotMeshes.push(m);
+  for(let r=-1;r<=1;r++)box(2,.06,.18,0x6e4527,x,.32,z+r*.6,plotGroup);
+  const g=new THREE.Group();g.position.set(x,.3,z);plotGroup.add(g);cropGroups.push({g,k:null,stage:-1})});
+ if(S.plots.length<MAXPLOTS){const[x,z]=plotPos(S.plots.length);buyTile=box(2.2,.12,2.2,0xb9d48f,x,.06,z,plotGroup);buyTile.userData={buy:1};
+  box(1,.05,.25,0xffffff,x,.15,z,plotGroup);box(.25,.05,1,0xffffff,x,.15,z,plotGroup)}else buyTile=null;
+ syncScene()}
+function cropModel(k,g,ready){const sp=[[-.6,-.6],[0,-.6],[.6,-.6],[-.6,0],[0,0],[.6,0],[-.6,.6],[0,.6],[.6,.6]];
+ sp.forEach(([x,z])=>{if(k==='wheat'){box(.12,.9,.12,0xd9b44a,x,.45,z,g);box(.2,.3,.2,0xf0cf5c,x,.95,z,g)}
+  else if(k==='corn'){box(.14,1.4,.14,0x4d8f2f,x,.7,z,g);box(.22,.45,.22,0xf5d040,x+.12,.9,z,g)}
+  else if(k==='carrot'){cone(.2,.5,0x4fa046,x,.3,z,g,5);cone(.16,.3,0xf08a24,x,.05,z,g,6)}
+  else if(k==='tomato'){box(.1,.8,.1,0x3d7a2a,x,.4,z,g);ball(.17,0xe2413a,x+.12,.5,z,g)}
+  else if(k==='berry'){ball(.3,0x3f8a3a,x,.3,z,g);ball(.09,0xd8254a,x+.18,.38,z+.1,g);ball(.09,0xd8254a,x-.1,.45,z-.15,g)}});
+ if(k==='pumpkin'){[[-.45,-.45],[.45,-.45],[-.45,.45],[.45,.45]].forEach(([x,z])=>{const p=ball(.38,0xf08a24,x,.3,z,g);p.scale.y=.75;box(.08,.18,.08,0x4d6b2a,x,.6,z,g)})}}
+function sprout(g){[[-.6,-.6],[0,-.6],[.6,-.6],[-.6,0],[0,0],[.6,0],[-.6,.6],[0,.6],[.6,.6]].forEach(([x,z])=>{cone(.12,.35,0x5fb544,x,.17,z,g,4)})}
+function syncScene(){const now=Date.now();S.plots.forEach((p,i)=>{const c=cropGroups[i];if(!c)return;
+ let stage=-1,k=p?p.k:null,pr=0;if(p){pr=Math.min(1,(now-p.t)/(CROPS[p.k].time*1000));stage=pr>=1?2:pr>.4?1:0}
+ if(c.k!==k||c.stage!==stage){while(c.g.children.length)c.g.remove(c.g.children[0]);c.k=k;c.stage=stage;
+  if(stage===0)sprout(c.g);else if(stage>=1)cropModel(k,c.g);}
+ if(stage===1)c.g.scale.set(1,.45+pr*.5,1);else c.g.scale.set(1,1,1);c.ready=stage===2})}
+
+// animals
+const animalGroup=new THREE.Group();scene.add(animalGroup);let animalObjs=[];
+function animalModel(k){const g=new THREE.Group();
+ if(k==='hen'){box(.6,.5,.8,0xffffff,0,.45,0,g);box(.35,.4,.35,0xffffff,0,.85,.4,g);box(.12,.12,.15,0xf0a020,0,.82,.62,g);box(.1,.15,.1,0xe23a3a,0,1.1,.4,g);box(.06,.25,.06,0xf0a020,.15,.12,0,g);box(.06,.25,.06,0xf0a020,-.15,.12,0,g)}
+ if(k==='cow'){box(1,.8,1.6,0xffffff,0,1,0,g);box(.5,.4,.5,0x222222,.25,1.2,.2,g);box(.6,.6,.6,0xffffff,0,1.3,1,g);box(.4,.25,.2,0xf2b8b8,0,1.15,1.32,g);
+  [[.35,.55],[-.35,.55],[.35,-.55],[-.35,-.55]].forEach(([x,z])=>box(.22,.6,.22,0x444444,x,.3,z,g));box(.1,.2,.1,0xe8d9b5,.25,1.7,1,g);box(.1,.2,.1,0xe8d9b5,-.25,1.7,1,g)}
+ if(k==='sheep'){const b=ball(.6,0xf4f1ea,0,.9,0,g);b.scale.z=1.3;box(.4,.4,.45,0x333333,0,1.05,.8,g);[[.25,.4],[-.25,.4],[.25,-.4],[-.25,-.4]].forEach(([x,z])=>box(.15,.5,.15,0x333333,x,.25,z,g))}
+ g.traverse(o=>{if(o.isMesh)o.castShadow=true});return g}
+const marker=()=>{const m=new THREE.Mesh(new THREE.SphereGeometry(.25,10,8),new THREE.MeshBasicMaterial({color:0xffe06b}));return m};
+function buildAnimals(){while(animalGroup.children.length)animalGroup.remove(animalGroup.children[0]);animalObjs=[];
+ S.animals.forEach((a,i)=>{const g=animalModel(a.k);const col=i%3,row=Math.floor(i/3);g.position.set(PEN.x-2.5+col*2.5,0,PEN.z-2+row*2);g.rotation.y=Math.random()*6.28;
+  g.userData={animal:i};g.traverse(o=>o.userData={animal:i});const mk=marker();mk.position.y=2.3;g.add(mk);animalGroup.add(g);animalObjs.push({g,mk,base:g.rotation.y,ph:Math.random()*6})})}
+
+// tapping (ignore drags)
+const ray=new THREE.Raycaster(),v2=new THREE.Vector2();let down=null;
+canvas.addEventListener('pointerdown',e=>{down={x:e.clientX,y:e.clientY,t:Date.now()}});
+canvas.addEventListener('pointerup',e=>{if(!down)return;const moved=Math.hypot(e.clientX-down.x,e.clientY-down.y);down=null;if(moved>10)return;
+ const r=canvas.getBoundingClientRect();v2.set((e.clientX-r.left)/r.width*2-1,-(e.clientY-r.top)/r.height*2+1);ray.setFromCamera(v2,cam);
+ const hits=ray.intersectObjects([...plotMeshes,...(buyTile?[buyTile]:[]),...cropGroups.map(c=>c.g),animalGroup],true);
+ for(const h of hits){let o=h.object;while(o&&!o.userData.plot&&o.userData.plot!==0&&!o.userData.buy&&o.userData.animal==null){const ci=cropGroups.findIndex(c=>c.g===o);if(ci>=0)return tapPlot(ci);o=o.parent}
+  if(!o)continue;if(o.userData.buy)return buyPlot();if(o.userData.plot!=null)return tapPlot(o.userData.plot);if(o.userData.animal!=null)return tapAnimal(o.userData.animal)}});
+
+function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+buildPlots();buildAnimals();ui();
+let last=0,clock=0;
+function loop(t){requestAnimationFrame(loop);const dt=Math.min(.05,(t-last)/1000)||0;last=t;clock+=dt;ctl.update();
+ if(Math.floor(clock*2)!==Math.floor((clock-dt)*2)){syncScene();if(tab==='orders'||tab==='shop')$('coins').textContent=S.coins}
+ cropGroups.forEach(c=>{if(c.ready)c.g.position.y=.3+Math.abs(Math.sin(clock*3))*.12;else c.g.position.y=.3});
+ const now=Date.now();animalObjs.forEach((o,i)=>{const a=S.animals[i];if(!a)return;const A=ANIMALS[a.k];
+  const ready=a.t!=null&&now-a.t>=A.time*1000,hungry=a.t==null;o.mk.visible=ready||hungry;o.mk.material.color.set(ready?0xffe06b:0xff7a59);o.mk.position.y=2.3+Math.sin(clock*4)*.12;
+  o.g.rotation.y=o.base+Math.sin(clock*.5+o.ph)*.6;if(!hungry&&!ready)o.g.position.y=Math.abs(Math.sin(clock*4+o.ph))*.05});
+ renderer.render(scene,cam)}
+requestAnimationFrame(loop);
+</script></body></html>

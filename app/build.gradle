@@ -3,11 +3,11 @@ plugins {
 }
 
 android {
-    namespace 'com.minigames.app'
+    namespace 'com.meadowbrook.farm'
     compileSdk 34
 
     defaultConfig {
-        applicationId 'com.minigames.app'
+        applicationId 'com.meadowbrook.farm'
         minSdk 24
         targetSdk 34
         versionCode 1
