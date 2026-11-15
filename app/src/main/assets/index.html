@@ -80,7 +80,7 @@ const RECIPES={
 const EGG={name:'Egg',icon:'🥚',sell:15,time:60,xp:2};
 const GRID=6, TILE=2;
 const KEY='sunnyacres_v1';
-let S={coins:30,xp:0,plots:{},owned:[],barn:{},coop:false,hens:[],tool:'wheat',mute:false,orders:[],done:0,bakery:false,oven:[],lastDay:'',streak:0,sold:0};
+let S={coins:30,xp:0,plots:{},owned:[],barn:{},coop:false,hens:[],tool:'wheat',mute:false,orders:[],done:0,bakery:false,oven:[],lastDay:'',streak:0,sold:0,stand:[]};
 function load(){try{const t=localStorage.getItem(KEY);if(t)S=Object.assign(S,JSON.parse(t));}catch(e){}
   if(S.tut==null)S.tut=S.xp>0?5:0;
   if(!S.owned.length){for(let x=2;x<4;x++)for(let z=2;z<4;z++)S.owned.push(x+','+z);} }
@@ -105,7 +105,7 @@ const hemi=new THREE.HemisphereLight(0xffffff,0x557744,0.7);scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff2d6,0.9);sun.position.set(12,20,8);sun.castShadow=true;
 sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-20,right:20,top:20,bottom:-20});scene.add(sun);
 function applyTheme(){const d=isDarkPage();
-  const sky=d?0x1a2340:0x9fd8f5;scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,40,90);
+  const sky=d?0x1a2340:0x9fd8f5;scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,70,140);
   hemi.intensity=d?0.45:0.75;sun.intensity=d?0.45:0.95;sun.color.set(d?0x9db4ff:0xfff2d6);
   lamps.forEach(l=>l.visible=d);}
 window.setTheme=t=>{document.documentElement.setAttribute('data-theme',t);applyTheme();};
@@ -151,6 +151,27 @@ const bakery=new THREE.Group(),bakeBuilt=new THREE.Group(),bakeSite=new THREE.Gr
   for(let i=0;i<3;i++){const pk=box(0.9,0.3,0.3,0xc98d4f);pk.position.set(-1+i*0.2,0.25+i*0.3,0.8);bakeSite.add(pk);}
   bakery.position.set(-1,0,-11.5);bakery.traverse(o=>o.userData={type:'bakery'});scene.add(bakery);}
 const arrow=new THREE.Mesh(new THREE.ConeGeometry(0.55,1.3,12),new THREE.MeshBasicMaterial({color:0xffd23f}));arrow.rotation.x=Math.PI;arrow.visible=false;scene.add(arrow);
+// road, roadside stand and the neighbours who walk past and shop there
+const STX=2,road=box(64,0.06,2.4,0xdcbb7e);road.position.set(0,0.03,13);road.castShadow=false;scene.add(road);
+const stand=new THREE.Group();{const c=box(2.8,0.9,1.1,0xb9824a);c.position.y=0.45;stand.add(c);
+  [-1.3,1.3].forEach(x=>{const p=box(0.12,2.3,0.12,0x7a4a26);p.position.set(x,1.15,-0.45);stand.add(p);});
+  for(let i=0;i<6;i++){const a=box(0.5,0.1,1.5,i%2?0xffffff:0x3f9bd9);a.position.set(-1.25+i*0.5,2.3,0.05);a.rotation.x=0.3;stand.add(a);}
+  [[-0.9,0xe8c547],[0,0xf08a24],[0.9,0xe0701c]].forEach(([x,col])=>{const cr=box(0.7,0.3,0.7,0x8a5a2b);cr.position.set(x,1.05,0);stand.add(cr);
+    for(let j=0;j<3;j++){const f=ball(0.16,col);f.position.set(x-0.18+j*0.18,1.28,(j%2)*0.15-0.07);stand.add(f);}});
+  stand.position.set(STX,0,10.6);stand.traverse(o=>o.userData={type:'stand'});scene.add(stand);}
+const NEIGH=[{n:'Rosa',c:0xe5533d,h:0xf7d774},{n:'Bram',c:0x3f7fd9,h:0x7a4a26},{n:'Tilda',c:0x9b59b6,h:0xffffff},{n:'Oskar',c:0xf39c12,h:0x2e7d32},{n:'Mei',c:0x1abc9c,h:0xe91e63}];
+const walkers=NEIGH.map((nb,i)=>{const g=new THREE.Group();
+  const b=new THREE.Mesh(new THREE.CylinderGeometry(0.26,0.36,0.95,10),M(nb.c));b.position.y=0.55;b.castShadow=true;g.add(b);
+  const hd=ball(0.27,0xf3c9a0);hd.position.y=1.28;g.add(hd);
+  const br=new THREE.Mesh(new THREE.CylinderGeometry(0.42,0.42,0.05,12),M(nb.h));br.position.y=1.47;g.add(br);const tp2=ball(0.2,nb.h);tp2.scale.y=0.8;tp2.position.y=1.52;g.add(tp2);
+  const bk=box(0.34,0.26,0.26,0xc98d4f);bk.position.set(0.36,0.55,0.1);g.add(bk);
+  g.traverse(o=>{if(o!==g)o.userData={type:'neighbor',n:nb.n};});
+  g.userData={dir:i%2?1:-1,sp:1.1+i*0.18,go:false,wait:0};g.position.set(-24+i*11,0,13);scene.add(g);return g;});
+anim.push((t,dt)=>{walkers.forEach((w,i)=>{const u=w.userData;
+  if(u.wait>0){u.wait-=dt;w.position.z=12.1;w.rotation.y=Math.PI;w.position.y=Math.abs(Math.sin(t*7))*0.1;if(u.wait<=0)u.go=false;return;}
+  if(u.go){const dx=STX-w.position.x;if(Math.abs(dx)<0.25){u.wait=2.5;return;}u.dir=Math.sign(dx);}
+  w.position.x+=u.dir*u.sp*dt*(u.go?2.2:1);if(Math.abs(w.position.x)>28)u.dir=-Math.sign(w.position.x);
+  w.position.z=13+(i%2?0.55:-0.55);w.position.y=Math.abs(Math.sin(t*8+i))*0.1;w.rotation.y=u.dir>0?Math.PI/2:-Math.PI/2;});});
 // orders board (tap it to see customer orders)
 const board=new THREE.Group();{[-0.7,0.7].forEach(x=>{const p=box(0.14,1.8,0.14,0x7a4a26);p.position.set(x,0.9,0);board.add(p);});
   const pl=box(1.9,1.1,0.1,0xe9d3a3);pl.position.y=1.4;board.add(pl);const rf=box(2.2,0.14,0.4,0xc0392b);rf.position.y=2.05;board.add(rf);
@@ -165,7 +186,7 @@ function tree(x,z,s){const g=new THREE.Group();
   for(let i=0;i<4;i++){const a=ball(0.13,0xe53935);a.position.set(Math.cos(i*1.9)*0.95,0.6+i*0.25,Math.sin(i*1.9)*0.95);top.add(a);}
   g.position.set(x,0,z);g.scale.setScalar(s);scene.add(g);
   anim.push(t=>{top.rotation.z=Math.sin(t*1.1+x)*0.04;top.rotation.x=Math.cos(t*0.9+z)*0.03;});}
-[[-14,10,1.2],[-16,-9,1],[14,-10,1.3],[16,12,0.9],[0,-15,1.1],[-6,15,1],[7,15,1.2],[-18,2,1]].forEach(a=>tree(...a));
+[[-14,10,1.2],[-16,-9,1],[14,-10,1.3],[16,12,0.9],[0,-15,1.1],[-7,18.5,1],[10,18.5,1.2],[-18,2,1]].forEach(a=>tree(...a));
 [[-7,-7],[7,-7],[-7,7],[7,7]].forEach(([x,z])=>{const p=box(0.2,2.4,0.2,0x333333);p.position.set(x,1.2,z);scene.add(p);
   const b=new THREE.Mesh(new THREE.SphereGeometry(0.3,8,8),new THREE.MeshBasicMaterial({color:0xffd780}));b.position.set(x,2.5,z);scene.add(b);
   const L=new THREE.PointLight(0xffc870,1,12);L.position.set(x,2.5,z);scene.add(L);lamps.push(L,b);});
@@ -193,7 +214,7 @@ const mill=new THREE.Group();{const tw=new THREE.Mesh(new THREE.CylinderGeometry
 [[-12.5,-6.5],[-13.2,-5.2],[-12.6,-5.8,1]].forEach(([x,z,up])=>{const h=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,1,14),M(0xe9c85a));h.rotation.z=Math.PI/2;h.position.set(x,up?1.55:0.6,z);h.castShadow=true;scene.add(h);});
 {let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;const cols=[0xff6fa5,0xffd54a,0xffffff,0xb388ff,0xff8a50];
   for(let i=0;i<46;i++){const a=rnd()*6.283,r=10+rnd()*20,x=Math.cos(a)*r,z=Math.sin(a)*r;
-    if(Math.hypot(x-10,z+8)<4||Math.hypot(x+10,z+3)<4||Math.hypot(x-10,z-4)<4.5||Math.hypot(x+11,z-9)<2.5)continue;
+    if(Math.abs(z-13)<1.8||Math.hypot(x-2,z-10.6)<2.5||Math.hypot(x-10,z+8)<4||Math.hypot(x+10,z+3)<4||Math.hypot(x-10,z-4)<4.5||Math.hypot(x+11,z-9)<2.5)continue;
     const st=box(0.05,0.35,0.05,0x3f8f2f);st.position.set(x,0.17,z);st.castShadow=false;scene.add(st);
     const f=ball(0.13,cols[i%5]);f.castShadow=false;f.position.set(x,0.4,z);scene.add(f);}}
 for(let i=0;i<5;i++){const b=new THREE.Group(),mat=new THREE.MeshBasicMaterial({color:[0xff9ed2,0xfff59d,0x9be7ff,0xffb74d,0xe1bee7][i],side:THREE.DoubleSide});
@@ -244,7 +265,7 @@ function makeHen(){const g=new THREE.Group();const b=new THREE.Mesh(new THREE.Sp
 function syncHens(){coop.visible=S.coop;bakeBuilt.visible=S.bakery;bakeSite.visible=!S.bakery;while(henObjs.length<S.hens.length)henObjs.push(makeHen());}
 
 // ===== Camera control: drag to rotate, pinch to zoom =====
-let yaw=0.7,pitch=0.9,dist=36;
+let yaw=0.7,pitch=0.95,dist=46;
 let intro=1; // opening camera swoop: 1 -> 0
 function placeCam(){const e=intro*intro,y=yaw-e*1.6,d=dist+e*26;cam.position.set(Math.sin(y)*Math.cos(pitch)*d,Math.sin(pitch)*d,Math.cos(y)*Math.cos(pitch)*d);cam.lookAt(0,0,0);}
 const ptrs=new Map();let moved=0,pinch0=0,dist0=0;
@@ -266,10 +287,10 @@ cv.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return
     if(paint){if(moved>10)paintAt(e.clientX,e.clientY);}
     else{yaw-=dx*0.006;pitch=Math.min(1.35,Math.max(0.35,pitch+dy*0.004));}}
   p.x=e.clientX;p.y=e.clientY;
-  if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);dist=Math.min(45,Math.max(12,dist0*pinch0/d));moved=99;}});
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);dist=Math.min(62,Math.max(12,dist0*pinch0/d));moved=99;}});
 const up=e=>{const wasTap=ptrs.size===1&&moved<10;ptrs.delete(e.pointerId);paint=null;if(wasTap)tap(e.clientX,e.clientY);};
 cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
-cv.addEventListener('wheel',e=>{dist=Math.min(45,Math.max(12,dist+e.deltaY*0.02));});
+cv.addEventListener('wheel',e=>{dist=Math.min(62,Math.max(12,dist+e.deltaY*0.02));});
 
 // ===== Tapping things =====
 const ray=new THREE.Raycaster(),v2=new THREE.Vector2();
@@ -279,6 +300,8 @@ function tap(x,y){const u=pickAt(x,y);if(!u)return;
   if(u.type==='board')return SFX.tap(),openOrders();
   if(u.type==='bakery')return SFX.tap(),openBakery();
   if(u.type==='coop')return SFX.tap(),openShop();
+  if(u.type==='stand')return SFX.tap(),openStand();
+  if(u.type==='neighbor')return SFX.tap(),toast(u.n+': "Lovely farm! I shop at your roadside stand."');
   if(u.type==='hen')return tapHen(u.g);}
 function doHarvest(k){const p=S.plots[k],c=CROPS[p.type];S.barn[p.type]=(S.barn[p.type]||0)+2;S.xp+=c.xp;delete S.plots[k];
   SFX.harvest();buzz(15);burst(kpos(k),c.color,18);burst(kpos(k),0xffffff,6);floatText('+2 '+c.icon,kpos(k));}
@@ -328,12 +351,12 @@ const bar=document.getElementById('bar');
 function drawBar(){let h='';
   for(const k in CROPS){const c=CROPS[k],lock=level()<c.lvl;
     h+=`<button class="${S.tool===k?'on':''}" onclick="pick('${k}')"><b>${lock?'🔒':c.icon}</b>${lock?'Lv '+c.lvl:'🪙'+c.cost}</button>`;}
-  h+=`<button onclick="openOrders()"><b>📋</b>Orders</button><button onclick="openBakery()"><b>🥖</b>Bakery</button><button onclick="openBarn()"><b>🏠</b>Barn</button><button onclick="openShop()"><b>🐔</b>Coop</button><button onclick="help()"><b>❓</b>Help</button>`;
+  h+=`<button onclick="openOrders()"><b>📋</b>Orders</button><button onclick="openStand()"><b>🏪</b>Stand</button><button onclick="openBakery()"><b>🥖</b>Bakery</button><button onclick="openBarn()"><b>🏠</b>Barn</button><button onclick="openShop()"><b>🐔</b>Coop</button><button onclick="help()"><b>❓</b>Help</button>`;
   bar.innerHTML=h;}
 window.pick=k=>{SFX.tap();S.tool=k;drawBar();const c=CROPS[k];toast(`${c.icon} ${c.name}: grows in ${c.time}s, sells for 🪙${c.sell} each`);};
 window.help=()=>{mbox.innerHTML=`<h2>How to play</h2><p>1. Pick a seed at the bottom, then tap a brown field to plant it. Drag across several fields to plant or harvest them all in one swipe.</p>
   <p>2. Wait until the crop glows, then tap it to harvest (you get 2).</p><p>3. Tap the red barn and sell your harvest for coins.</p>
-  <p>4. Tap the light green squares to buy more land. Build a coop and buy hens for eggs.</p><p>5. Open 📋 Orders: customers pay extra for deliveries. Build the 🥖 Bakery to turn crops into goods worth much more.</p><p>6. Level up to unlock carrots, corn and pumpkins.</p>
+  <p>4. Tap the light green squares to buy more land. Build a coop and buy hens for eggs.</p><p>5. Put crates on the 🏪 roadside Stand: neighbours walking past will buy them, even while the game is closed.</p><p>Also open 📋 Orders: customers pay extra for deliveries. Build the 🥖 Bakery to turn crops into goods worth much more.</p><p>6. Level up to unlock carrots, corn and pumpkins.</p>
   <p class="muted">Drag on the grass to turn the camera, pinch to zoom. Crops keep growing while the app is closed.</p>
   <p style="text-align:right"><button onclick="closeModal()">Let's farm!</button></p>`;modal.style.display='flex';};
 window.openBarn=openBarn;window.openShop=openShop;window.closeModal=closeModal;
@@ -461,6 +484,35 @@ setInterval(()=>{if(modal.style.display==='flex'&&document.getElementById('bkmar
 anim.push(()=>{const done=S.bakery&&S.oven.find(ovenDone);tp.copy(bakery.position);tp.y=4.6;tag('bk',tp,done?'<span>'+RECIPES[done.r].icon+'</span>':null,'ready');
   if(S.bakery&&S.oven.some(o=>!ovenDone(o))&&Math.random()<0.07){const m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color:0xdddddd,transparent:true}));
     m.position.set(bakery.position.x+1,4.1,bakery.position.z-0.4);m.scale.setScalar(2);m.userData={vx:0.3,vy:1.1,vz:0.1,life:0.8,puff:1};scene.add(m);parts.push(m);}});
+
+// ===== Roadside stand: put crates on sale and neighbours buy them over time =====
+const TIERS=[{n:'Quick',m:1,a:10,b:25,d:'sells in seconds'},{n:'Fair',m:1.3,a:40,b:90,d:'about a minute'},{n:'Top',m:1.7,a:120,b:240,d:'a few minutes'}];
+const isSold=o=>now()>=o.t+o.d;let stShown='';
+function openStand(){stShown=S.stand.map(isSold).join();
+  let h='<h2 id="stmark">🏪 Roadside stand</h2><p class="muted">Neighbours walking past buy your crates. A higher price pays more but takes longer.</p>';
+  for(let i=0;i<3;i++){const o=S.stand[i];
+    if(!o)h+='<div class="row"><span class="muted">Empty shelf</span><span></span></div>';
+    else{const it=itemInfo(o.k);h+=`<div class="row"><span>${it.icon} ${it.name} × ${o.q}<br><span class="muted">${isSold(o)?'Sold to '+NEIGH[o.who].n:'Waiting for a buyer…'} · 🪙 ${o.p}</span></span>
+      ${isSold(o)?`<button onclick="collectStand(${i})">Collect</button>`:`<button onclick="unlist(${i})" style="background:var(--btn);color:var(--text);box-shadow:0 3px 0 var(--edge);text-shadow:none">Take back</button>`}</div>`;}}
+  h+='<p class="muted">Put a crate on sale (up to 5 per crate)</p>';let any=false;
+  for(const k in S.barn){const have=S.barn[k];if(!have)continue;any=true;const it=itemInfo(k),q=Math.min(5,have),full=S.stand.length>=3;
+    h+=`<div class="row" style="display:block"><b>${it.icon} ${it.name}</b> <span class="muted">× ${have} in barn</span><div style="display:flex;gap:6px;margin-top:5px">`+
+      TIERS.map((T,ti)=>`<button ${full?'disabled':''} style="flex:1;padding:6px 2px;font-size:12px" onclick="listItem('${k}',${ti})">${T.n}<br>🪙 ${Math.max(1,Math.round(it.sell*q*T.m))}</button>`).join('')+'</div></div>';}
+  if(!any)h+='<p class="muted">Your barn is empty. Harvest something first.</p>';
+  mbox.innerHTML=h+'<p class="muted">Quick: seconds · Fair: about a minute · Top: a few minutes</p><p style="text-align:right"><button onclick="closeModal()">Close</button></p>';modal.style.display='flex';}
+window.openStand=openStand;
+window.listItem=(k,ti)=>{const T=TIERS[ti],q=Math.min(5,S.barn[k]||0);if(!q||S.stand.length>=3)return SFX.nope();
+  S.barn[k]-=q;S.stand.push({k,q,p:Math.max(1,Math.round(itemInfo(k).sell*q*T.m)),t:now(),d:T.a+Math.random()*(T.b-T.a),who:Math.random()*NEIGH.length|0,seen:0});
+  SFX.plant();refresh();openStand();};
+window.unlist=i=>{const o=S.stand[i];if(!o||isSold(o))return;S.stand.splice(i,1);S.barn[o.k]=(S.barn[o.k]||0)+o.q;SFX.tap();refresh();openStand();};
+window.collectStand=i=>{const o=S.stand[i];if(!o||!isSold(o))return;S.stand.splice(i,1);S.coins+=o.p;S.xp+=1;S.sold=1;SFX.coin();buzz(25);coinFly();refresh();
+  if(modal.style.display==='flex'&&document.getElementById('stmark'))openStand();};
+setInterval(()=>{if(modal.style.display==='flex'&&document.getElementById('stmark')&&stShown!==S.stand.map(isSold).join())openStand();},1000);
+anim.push(()=>{let away=0,ready=false;
+  for(const o of S.stand){if(!isSold(o))continue;ready=true;if(o.seen)continue;o.seen=1;
+    if(now()-(o.t+o.d)<3){const w=walkers[o.who];w.userData.go=true;SFX.coin();toast(NEIGH[o.who].n+' bought '+o.q+' '+itemInfo(o.k).icon+' for 🪙'+o.p+'. Collect it at the stand!');}else away++;}
+  if(away)toast('While you were away, neighbours bought '+away+' crate'+(away>1?'s':'')+'! Collect at the stand.');
+  tp.copy(stand.position);tp.y=3.4;tag('st',tp,ready?'<span>🪙</span>':null,'ready');});
 
 // ===== Daily reward =====
 const dayStr=d=>d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();
