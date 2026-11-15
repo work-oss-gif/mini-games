@@ -69,6 +69,13 @@ public class MainActivity extends Activity {
         });
     }
 
-    @Override protected void onPause() { super.onPause(); web.onPause(); }
-    @Override protected void onResume() { super.onResume(); web.onResume(); }
+    // Stop the music when the app goes to the background, start it again on return.
+    @Override protected void onPause() {
+        web.evaluateJavascript("window.appPause&&appPause()", null);
+        super.onPause(); web.onPause();
+    }
+    @Override protected void onResume() {
+        super.onResume(); web.onResume();
+        web.evaluateJavascript("window.appResume&&appResume()", null);
+    }
 }
