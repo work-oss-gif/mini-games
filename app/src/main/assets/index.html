@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<title>Sunny Acres</title>
+<style>
+:root{--panel:#ffffffe6;--text:#1b1d21;--muted:#5b6170;--accent:#2f8f3a;--btn:#eef1f4;--sel:#ffd54a;--warn:#c0392b}
+:root[data-theme="dark"]{--panel:#1c1f24e6;--text:#e8eaed;--muted:#9aa1ad;--accent:#5cc06a;--btn:#2a2f36;--sel:#b8901a;--warn:#ff7b6b}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--panel:#1c1f24e6;--text:#e8eaed;--muted:#9aa1ad;--accent:#5cc06a;--btn:#2a2f36;--sel:#b8901a;--warn:#ff7b6b}}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none}
+html,body{margin:0;height:100%;overflow:hidden;background:#121417;font-family:system-ui,sans-serif;color:var(--text)}
+canvas{display:block;touch-action:none}
+#top{position:fixed;top:8px;left:8px;right:8px;display:flex;gap:6px;justify-content:space-between;pointer-events:none}
+.chip{background:var(--panel);border-radius:14px;padding:6px 10px;font-weight:700;font-size:15px;box-shadow:0 2px 6px #0003}
+#bar{position:fixed;bottom:8px;left:8px;right:8px;display:flex;gap:6px;overflow-x:auto;background:var(--panel);padding:6px;border-radius:16px;box-shadow:0 2px 8px #0004}
+#bar button{flex:0 0 auto;min-width:64px;border:0;border-radius:12px;background:var(--btn);color:var(--text);padding:6px 8px;font-size:13px;font-weight:600}
+#bar button.on{background:var(--sel);color:#1b1d21}
+#bar button b{display:block;font-size:22px}
+#toast{position:fixed;top:52px;left:50%;transform:translateX(-50%);background:var(--panel);padding:8px 14px;border-radius:12px;font-weight:600;opacity:0;transition:opacity .3s;pointer-events:none;text-align:center;max-width:90%}
+#modal{position:fixed;inset:0;background:#0007;display:none;align-items:center;justify-content:center}
+#modal .box{background:var(--panel);border-radius:18px;padding:16px;width:min(340px,92%);max-height:80%;overflow:auto}
+#modal h2{margin:0 0 8px}
+#modal .row{display:flex;justify-content:space-between;align-items:center;padding:6px 0;border-bottom:1px solid #8883}
+#modal button{border:0;border-radius:10px;background:var(--accent);color:#fff;padding:8px 12px;font-weight:700}
+#modal button:disabled{opacity:.4}
+.muted{color:var(--muted);font-size:13px}
+</style>
+</head>
+<body>
+<div id="top"><span class="chip" id="coins">🪙 0</span><span class="chip" id="lvl">⭐ Lv 1</span></div>
+<div id="toast"></div>
+<div id="bar"></div>
+<div id="modal"><div class="box" id="mbox"></div></div>
+<script src="three.min.js"></script>
+<script>
+// ===== Game data =====
+const CROPS={
+  wheat:{name:'Wheat',icon:'🌾',cost:2,sell:5,time:20,xp:1,lvl:1,color:0xe8c547},
+  carrot:{name:'Carrot',icon:'🥕',cost:5,sell:12,time:45,xp:2,lvl:2,color:0xf08a24},
+  corn:{name:'Corn',icon:'🌽',cost:10,sell:26,time:90,xp:4,lvl:3,color:0xf5e04a},
+  pumpkin:{name:'Pumpkin',icon:'🎃',cost:20,sell:55,time:180,xp:8,lvl:5,color:0xe0701c}
+};
+const EGG={name:'Egg',icon:'🥚',sell:15,time:60,xp:2};
+const GRID=6, TILE=2;
+const KEY='sunnyacres_v1';
+let S={coins:30,xp:0,plots:{},owned:[],barn:{},coop:false,hens:[],tool:'wheat'};
+function load(){try{const t=localStorage.getItem(KEY);if(t)S=Object.assign(S,JSON.parse(t));}catch(e){}
+  if(!S.owned.length){for(let x=2;x<4;x++)for(let z=2;z<4;z++)S.owned.push(x+','+z);} }
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
+load();
+const level=()=>1+Math.floor(Math.sqrt(S.xp/5));
+const now=()=>Date.now()/1000;
+const plotPrice=()=>20*Math.pow(1.35,S.owned.length-4)|0;
+
+// ===== Theme =====
+function isDarkPage(){const a=document.documentElement.getAttribute('data-theme');
+  if(a)return a==='dark';return matchMedia('(prefers-color-scheme:dark)').matches;}
+
+// ===== 3D scene =====
+const renderer=new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.shadowMap.enabled=true;
+document.body.prepend(renderer.domElement);
+const scene=new THREE.Scene();
+const cam=new THREE.PerspectiveCamera(45,1,0.1,200);
+const hemi=new THREE.HemisphereLight(0xffffff,0x557744,0.7);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xfff2d6,0.9);sun.position.set(12,20,8);sun.castShadow=true;
+sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-20,right:20,top:20,bottom:-20});scene.add(sun);
+function applyTheme(){const d=isDarkPage();
+  const sky=d?0x1a2340:0x9fd8f5;scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,40,90);
+  hemi.intensity=d?0.45:0.75;sun.intensity=d?0.45:0.95;sun.color.set(d?0x9db4ff:0xfff2d6);
+  lamps.forEach(l=>l.visible=d);}
+window.setTheme=t=>{document.documentElement.setAttribute('data-theme',t);applyTheme();};
+
+const M=c=>new THREE.MeshLambertMaterial({color:c});
+const box=(w,h,d,c)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.castShadow=m.receiveShadow=true;return m;};
+// grass ground
+const ground=new THREE.Mesh(new THREE.CircleGeometry(45,48),M(0x6cbf4a));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
+const off=-(GRID*TILE)/2+TILE/2;
+const tpos=(x,z)=>new THREE.Vector3(off+x*TILE,0,off+z*TILE);
+// plots
+const plotMesh={},cropMesh={},signMesh={};
+for(let x=0;x<GRID;x++)for(let z=0;z<GRID;z++){
+  const k=x+','+z;const p=box(TILE*0.92,0.2,TILE*0.92,0x8b5a2b);p.position.copy(tpos(x,z));p.position.y=0.1;
+  p.userData={type:'plot',k};scene.add(p);plotMesh[k]=p;}
+// barn (sell building)
+const barn=new THREE.Group();
+const bBody=box(4,3,3,0xb8322a);bBody.position.y=1.5;barn.add(bBody);
+const roof=new THREE.Mesh(new THREE.ConeGeometry(3.2,1.8,4),M(0x6b3b1f));roof.position.y=3.9;roof.rotation.y=Math.PI/4;roof.scale.z=0.75;roof.castShadow=true;barn.add(roof);
+const door=box(1.4,1.9,0.1,0xf2e6c9);door.position.set(0,0.95,1.52);barn.add(door);
+barn.position.set(-10,0,-3);barn.rotation.y=Math.PI/2;barn.traverse(o=>o.userData={type:'barn'});scene.add(barn);
+// coop
+const coop=new THREE.Group();
+const cB=box(2.6,1.6,2,0xf0d9a8);cB.position.y=0.8;coop.add(cB);
+const cR=box(3,0.25,2.4,0x7a4a2a);cR.position.y=1.75;coop.add(cR);
+const fence=[];for(let i=0;i<16;i++){const a=i/16*Math.PI*2;const f=box(0.15,0.8,0.15,0xd8c39a);f.position.set(Math.cos(a)*3.5,0.4,Math.sin(a)*3.5);coop.add(f);}
+coop.position.set(10,0,4);coop.traverse(o=>o.userData={type:'coop'});scene.add(coop);
+// trees and lamps
+const lamps=[];
+function tree(x,z,s){const g=new THREE.Group();const t=box(0.4,1.4,0.4,0x6b4423);t.position.y=0.7;g.add(t);
+  const l=new THREE.Mesh(new THREE.IcosahedronGeometry(1.2,0),M(0x3f9c3a));l.position.y=2.1;l.castShadow=true;g.add(l);g.position.set(x,0,z);g.scale.setScalar(s);scene.add(g);}
+[[-14,10,1.2],[-16,-9,1],[14,-10,1.3],[16,12,0.9],[0,-15,1.1],[-6,15,1],[7,15,1.2],[-18,2,1]].forEach(a=>tree(...a));
+[[-7,-7],[7,-7],[-7,7],[7,7]].forEach(([x,z])=>{const p=box(0.2,2.4,0.2,0x333333);p.position.set(x,1.2,z);scene.add(p);
+  const b=new THREE.Mesh(new THREE.SphereGeometry(0.3,8,8),new THREE.MeshBasicMaterial({color:0xffd780}));b.position.set(x,2.5,z);scene.add(b);
+  const L=new THREE.PointLight(0xffc870,1,12);L.position.set(x,2.5,z);scene.add(L);lamps.push(L,b);});
+
+// crop models (scaled by growth)
+function makeCrop(type){const c=CROPS[type],g=new THREE.Group();
+  for(let i=0;i<4;i++){const ox=(i%2-0.5)*0.8,oz=((i>>1)-0.5)*0.8;
+    const stem=box(0.12,0.9,0.12,0x3f8f2f);stem.position.set(ox,0.45,oz);g.add(stem);
+    let head;
+    if(type==='pumpkin'){head=new THREE.Mesh(new THREE.SphereGeometry(0.35,10,8),M(c.color));head.scale.y=0.75;head.position.set(ox,0.3,oz);stem.visible=false;}
+    else if(type==='carrot'){head=new THREE.Mesh(new THREE.ConeGeometry(0.22,0.5,6),M(0x4caf50));head.position.set(ox,0.6,oz);}
+    else{head=box(0.25,0.45,0.25,c.color);head.position.set(ox,0.95,oz);}
+    head.castShadow=true;g.add(head);}
+  g.userData.ripeMat=null;return g;}
+const ripeRing=new THREE.MeshBasicMaterial({color:0xfff176});
+
+// hens
+const henObjs=[];
+function makeHen(){const g=new THREE.Group();const b=new THREE.Mesh(new THREE.SphereGeometry(0.35,10,8),M(0xffffff));b.position.y=0.4;b.castShadow=true;g.add(b);
+  const h=new THREE.Mesh(new THREE.SphereGeometry(0.2,8,8),M(0xffffff));h.position.set(0.3,0.7,0);g.add(h);
+  const beak=new THREE.Mesh(new THREE.ConeGeometry(0.07,0.18,4),M(0xffa000));beak.rotation.z=-Math.PI/2;beak.position.set(0.52,0.68,0);g.add(beak);
+  const comb=box(0.08,0.12,0.12,0xe53935);comb.position.set(0.3,0.92,0);g.add(comb);
+  const egg=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,8),M(0xfff3d6));egg.scale.y=1.3;egg.position.y=1.4;g.add(egg);g.userData.egg=egg;
+  g.traverse(o=>{if(o!==g)o.userData={type:'hen',g};});
+  g.userData.t=Math.random()*10;scene.add(g);return g;}
+function syncHens(){coop.visible=S.coop;while(henObjs.length<S.hens.length)henObjs.push(makeHen());}
+
+// ===== Camera control: drag to rotate, pinch to zoom =====
+let yaw=0.7,pitch=0.9,dist=36;
+function placeCam(){cam.position.set(Math.sin(yaw)*Math.cos(pitch)*dist,Math.sin(pitch)*dist,Math.cos(yaw)*Math.cos(pitch)*dist);cam.lookAt(0,0,0);}
+const ptrs=new Map();let moved=0,pinch0=0,dist0=0;
+const cv=renderer.domElement;
+cv.addEventListener('pointerdown',e=>{ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);dist0=dist;}});
+cv.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return;
+  const dx=e.clientX-p.x,dy=e.clientY-p.y;
+  if(ptrs.size===1){yaw-=dx*0.006;pitch=Math.min(1.35,Math.max(0.35,pitch+dy*0.004));moved+=Math.abs(dx)+Math.abs(dy);}
+  p.x=e.clientX;p.y=e.clientY;
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);dist=Math.min(45,Math.max(12,dist0*pinch0/d));moved=99;}});
+const up=e=>{const wasTap=ptrs.size===1&&moved<10;ptrs.delete(e.pointerId);if(wasTap)tap(e.clientX,e.clientY);};
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
+cv.addEventListener('wheel',e=>{dist=Math.min(45,Math.max(12,dist+e.deltaY*0.02));});
+
+// ===== Tapping things =====
+const ray=new THREE.Raycaster(),v2=new THREE.Vector2();
+function tap(x,y){v2.set(x/innerWidth*2-1,-(y/innerHeight)*2+1);ray.setFromCamera(v2,cam);
+  const hits=ray.intersectObjects(scene.children,true);
+  for(const h of hits){const u=h.object.userData;if(!u||!u.type)continue;
+    if(u.type==='plot'||u.type==='crop')return tapPlot(u.k);
+    if(u.type==='barn')return openBarn();
+    if(u.type==='coop')return openShop();
+    if(u.type==='hen')return tapHen(u.g);}
+}
+function tapPlot(k){
+  if(!S.owned.includes(k)){const pr=plotPrice();
+    if(S.coins>=pr){S.coins-=pr;S.owned.push(k);toast('New field bought for 🪙'+pr);}else toast('This field costs 🪙'+pr);return refresh();}
+  const p=S.plots[k];
+  if(p){const c=CROPS[p.type];
+    if(now()-p.t>=c.time){S.barn[p.type]=(S.barn[p.type]||0)+2;S.xp+=c.xp;delete S.plots[k];toast('+2 '+c.icon+'  (+'+c.xp+' XP)');}
+    else toast(c.icon+' ready in '+Math.ceil(c.time-(now()-p.t))+'s');
+    return refresh();}
+  const c=CROPS[S.tool];
+  if(level()<c.lvl)return toast(c.name+' unlocks at level '+c.lvl);
+  if(S.coins<c.cost)return toast('Not enough coins. Sell crops at the barn!');
+  S.coins-=c.cost;S.plots[k]={type:S.tool,t:now()};refresh();}
+function tapHen(g){const i=henObjs.indexOf(g),h=S.hens[i];
+  if(now()-h>=EGG.time){S.hens[i]=now();S.barn.egg=(S.barn.egg||0)+1;S.xp+=EGG.xp;toast('+1 🥚');}
+  else toast('🐔 egg in '+Math.ceil(EGG.time-(now()-h))+'s');refresh();}
+
+// ===== Menus =====
+const modal=document.getElementById('modal'),mbox=document.getElementById('mbox');
+modal.onclick=e=>{if(e.target===modal)closeModal();};
+function closeModal(){modal.style.display='none';}
+window.appBack=()=>{if(modal.style.display==='flex'){closeModal();return true;}return false;};
+function itemInfo(k){return k==='egg'?EGG:CROPS[k];}
+function openBarn(){let total=0,rows='';
+  for(const k in S.barn){if(!S.barn[k])continue;const it=itemInfo(k),v=S.barn[k]*it.sell;total+=v;
+    rows+=`<div class="row"><span>${it.icon} ${it.name} × ${S.barn[k]}</span><span>🪙 ${v}</span></div>`;}
+  mbox.innerHTML=`<h2>🏠 Barn</h2>${rows||'<p class="muted">Empty. Harvest ripe crops (they glow) to fill it.</p>'}
+   <p style="display:flex;gap:8px;justify-content:flex-end"><button onclick="closeModal()" style="background:var(--btn);color:var(--text)">Close</button>
+   <button ${total?'':'disabled'} onclick="sellAll()">Sell all 🪙 ${total}</button></p>`;modal.style.display='flex';}
+window.sellAll=()=>{let t=0;for(const k in S.barn){t+=S.barn[k]*itemInfo(k).sell;}S.barn={};S.coins+=t;toast('Sold for 🪙'+t);closeModal();refresh();};
+function openShop(){const henCost=40+S.hens.length*25;
+  mbox.innerHTML=`<h2>🐔 Coop</h2>
+   ${S.coop?'':'<div class="row"><span>Build the coop</span><button onclick="buy(\'coop\')">🪙 60</button></div>'}
+   <div class="row"><span>Buy a hen (${S.hens.length}/6)<br><span class="muted">Lays an egg every minute</span></span>
+   <button ${S.coop&&S.hens.length<6?'':'disabled'} onclick="buy('hen')">🪙 ${henCost}</button></div>
+   <p class="muted">Tap a hen with an egg above her head to collect it.</p>
+   <p style="text-align:right"><button onclick="closeModal()">Done</button></p>`;modal.style.display='flex';}
+window.buy=w=>{if(w==='coop'){if(S.coins<60)return toast('Need 🪙60');S.coins-=60;S.coop=true;}
+  else{const c=40+S.hens.length*25;if(S.coins<c)return toast('Need 🪙'+c);S.coins-=c;S.hens.push(now()-EGG.time);}
+  syncHens();refresh();openShop();};
+
+// ===== Bottom bar =====
+const bar=document.getElementById('bar');
+function drawBar(){let h='';
+  for(const k in CROPS){const c=CROPS[k],lock=level()<c.lvl;
+    h+=`<button class="${S.tool===k?'on':''}" onclick="pick('${k}')"><b>${lock?'🔒':c.icon}</b>${lock?'Lv '+c.lvl:'🪙'+c.cost}</button>`;}
+  h+=`<button onclick="openBarn()"><b>🏠</b>Barn</button><button onclick="openShop()"><b>🐔</b>Coop</button><button onclick="help()"><b>❓</b>Help</button>`;
+  bar.innerHTML=h;}
+window.pick=k=>{S.tool=k;drawBar();const c=CROPS[k];toast(`${c.icon} ${c.name}: grows in ${c.time}s, sells for 🪙${c.sell} each`);};
+window.help=()=>{mbox.innerHTML=`<h2>How to play</h2><p>1. Pick a seed at the bottom, then tap a brown field to plant it.</p>
+  <p>2. Wait until the crop glows, then tap it to harvest (you get 2).</p><p>3. Tap the red barn and sell your harvest for coins.</p>
+  <p>4. Tap grey fields to buy more land. Build a coop and buy hens for eggs.</p><p>5. Level up to unlock carrots, corn and pumpkins.</p>
+  <p class="muted">Drag to turn the camera, pinch to zoom. Crops keep growing while the app is closed.</p>
+  <p style="text-align:right"><button onclick="closeModal()">Let's farm!</button></p>`;modal.style.display='flex';};
+window.openBarn=openBarn;window.openShop=openShop;window.closeModal=closeModal;
+
+let tt;function toast(m){const t=document.getElementById('toast');t.textContent=m;t.style.opacity=1;clearTimeout(tt);tt=setTimeout(()=>t.style.opacity=0,1800);}
+let lastLvl=level();
+function refresh(){document.getElementById('coins').textContent='🪙 '+S.coins;
+  const L=level();document.getElementById('lvl').textContent='⭐ Lv '+L;
+  if(L>lastLvl){toast('🎉 Level '+L+'!');lastLvl=L;}drawBar();
+  for(const k in plotMesh){plotMesh[k].material.color.set(S.owned.includes(k)?0x8b5a2b:0x9aa08f);}
+  save();}
+
+// ===== Update crops each frame =====
+function updateCrops(time){for(const k in plotMesh){const p=S.plots[k];
+  if(!p){if(cropMesh[k]){scene.remove(cropMesh[k]);delete cropMesh[k];}continue;}
+  if(!cropMesh[k]||cropMesh[k].userData.type!==p.type){if(cropMesh[k])scene.remove(cropMesh[k]);
+    const m=makeCrop(p.type);m.userData.type=p.type;m.position.copy(tpos(...k.split(',').map(Number)));m.position.y=0.2;
+    m.traverse(o=>{if(o!==m)o.userData={type:'crop',k};});scene.add(m);cropMesh[k]=m;}
+  const c=CROPS[p.type],g=Math.min(1,(now()-p.t)/c.time),m=cropMesh[k];
+  m.scale.set(1,0.15+0.85*g,1);
+  const ripe=g>=1;m.position.y=0.2+(ripe?Math.abs(Math.sin(time*3))*0.08:0);
+  plotMesh[k].material.color.set(ripe?0xc9a24a:0x8b5a2b);}}
+function updateHens(time,dt){henObjs.forEach((g,i)=>{const d=g.userData;d.t+=dt;
+  const a=d.t*0.4+i*1.7,r=1.5+Math.sin(d.t*0.3+i)*1;
+  g.position.set(coop.position.x+Math.cos(a)*r,Math.abs(Math.sin(d.t*6))*0.05,coop.position.z+Math.sin(a)*r);
+  g.rotation.y=-a-Math.PI/2*0;g.lookAt(coop.position.x+Math.cos(a+0.1)*r,0,coop.position.z+Math.sin(a+0.1)*r);g.rotateY(-Math.PI/2);
+  d.egg.visible=now()-S.hens[i]>=EGG.time;d.egg.position.y=1.4+Math.sin(time*4)*0.1;});}
+
+function resize(){renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();}
+addEventListener('resize',resize);resize();
+applyTheme();syncHens();refresh();
+try{if(!localStorage.getItem(KEY+'_seen')){localStorage.setItem(KEY+'_seen','1');help();}}catch(e){help();}
+let last=performance.now();
+function loop(t){const dt=Math.min(0.1,(t-last)/1000);last=t;placeCam();updateCrops(t/1000);updateHens(t/1000,dt);renderer.render(scene,cam);requestAnimationFrame(loop);}
+requestAnimationFrame(loop);
+setInterval(save,5000);
+</script>
+</body>
+</html>
