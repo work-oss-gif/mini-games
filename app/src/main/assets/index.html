@@ -7,7 +7,7 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;height:100%;overflow:hidden;background:#9fd0f0;font-family:"Trebuchet MS",system-ui,sans-serif;color:var(--ink);user-select:none}
 #gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
-.top{position:fixed;top:8px;left:8px;right:8px;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
+.top{position:fixed;top:8px;left:8px;right:8px;z-index:2;display:flex;gap:6px;flex-wrap:wrap;pointer-events:none}
 .pill{background:var(--card);border-radius:999px;padding:5px 12px;font-weight:bold;border:2px solid var(--line);font-size:14px}
 .panel{position:fixed;left:0;right:0;bottom:0;background:var(--card);border-top:3px solid var(--line);border-radius:16px 16px 0 0;max-height:46%;display:flex;flex-direction:column}
 .tabs{display:flex;border-bottom:2px solid var(--line)}
@@ -28,7 +28,7 @@ html,body{margin:0;height:100%;overflow:hidden;background:#9fd0f0;font-family:"T
 #toast.on{opacity:1}
 </style></head><body>
 <canvas id="gl"></canvas>
-<div class="top"><span class="pill">🪙 <span id="coins">0</span></span><span class="pill">⭐ Lv <span id="lvl">1</span> · <span id="xp">0</span>/<span id="need">10</span></span></div>
+<div class="top"><span class="pill">🪙 <span id="coins">0</span></span><button class="pill" id="mus" style="pointer-events:auto;font:inherit;font-weight:bold;color:var(--ink);margin-left:auto;order:3">🎵 Music on</button><span class="pill">⭐ Lv <span id="lvl">1</span> · <span id="xp">0</span>/<span id="need">10</span></span></div>
 <div id="toast"></div>
 <div class="panel">
 <div class="tabs"><button data-t="seeds" class="on">Seeds</button><button data-t="barn">Barn</button><button data-t="orders">Orders</button><button data-t="shop">Shop</button></div>
@@ -49,7 +49,7 @@ try{const s=JSON.parse(localStorage.getItem('meadow3d'));if(s&&s.plots)S=s}catch
 const save=()=>{try{localStorage.setItem('meadow3d',JSON.stringify(S))}catch(e){}};
 const need=()=>S.lvl*10, $=id=>document.getElementById(id);
 function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toast.t);toast.t=setTimeout(()=>t.classList.remove('on'),1600)}
-function addXP(n){S.xp+=n;while(S.xp>=need()){S.xp-=need();S.lvl++;toast('Level up! Level '+S.lvl)}}
+function addXP(n){S.xp+=n;while(S.xp>=need()){S.xp-=need();S.lvl++;sfx('level');toast('Level up! Level '+S.lvl)}}
 function give(k,n){S.inv[k]=(S.inv[k]||0)+(n||1)}
 function take(k,n){n=n||1;if((S.inv[k]||0)<n)return false;S.inv[k]-=n;if(!S.inv[k])delete S.inv[k];return true}
 function unlocked(k){if(CROPS[k])return CROPS[k].lvl<=S.lvl;for(const a in ANIMALS)if(ANIMALS[a].out===k)return ANIMALS[a].lvl<=S.lvl&&S.animals.some(x=>x.k===a);return false}
@@ -60,19 +60,19 @@ while(S.orders.length<3)S.orders.push(newOrder());
 const plotCost=()=>50+(S.plots.length-6)*40;
 
 function tapPlot(i){const p=S.plots[i],now=Date.now();
- if(!p){const c=CROPS[S.sel];if(S.coins<c.cost)return toast('Not enough coins');S.coins-=c.cost;S.plots[i]={k:S.sel,t:now}}
- else if(now-p.t>=CROPS[p.k].time*1000){give(p.k,2);addXP(1+CROPS[p.k].lvl);S.plots[i]=null;toast('+2 '+CROPS[p.k].e+' '+CROPS[p.k].n)}
+ if(!p){const c=CROPS[S.sel];if(S.coins<c.cost){sfx('no');return toast('Not enough coins')};S.coins-=c.cost;S.plots[i]={k:S.sel,t:now};sfx('plant')}
+ else if(now-p.t>=CROPS[p.k].time*1000){give(p.k,2);addXP(1+CROPS[p.k].lvl);S.plots[i]=null;sfx('harvest');toast('+2 '+CROPS[p.k].e+' '+CROPS[p.k].n)}
  else toast(CROPS[p.k].n+': '+Math.ceil(CROPS[p.k].time-(now-p.t)/1000)+'s left');
  save();syncScene();ui()}
 function tapAnimal(i){const a=S.animals[i],A=ANIMALS[a.k],now=Date.now();
- if(a.t==null){if(!take(A.feed))return toast(A.n+' needs '+CROPS[A.feed].e+' '+CROPS[A.feed].n);a.t=now;toast('Fed the '+A.n)}
- else if(now-a.t>=A.time*1000){give(A.out);addXP(3);a.t=null;toast('+1 '+GOODS[A.out])}
+ if(a.t==null){if(!take(A.feed))return toast(A.n+' needs '+CROPS[A.feed].e+' '+CROPS[A.feed].n);a.t=now;sfx(a.k);toast('Fed the '+A.n)}
+ else if(now-a.t>=A.time*1000){give(A.out);addXP(3);a.t=null;sfx('harvest');toast('+1 '+GOODS[A.out])}
  else toast(A.n+': '+Math.ceil(A.time-(now-a.t)/1000)+'s left');save();ui()}
 function buyPlot(){if(S.plots.length>=MAXPLOTS)return toast('Your farm is full');const c=plotCost();if(S.coins<c)return toast('A field costs '+c+' coins');S.coins-=c;S.plots.push(null);save();buildPlots();ui()}
-function buyAnimal(k){const A=ANIMALS[k];if(S.lvl<A.lvl||S.coins<A.price)return;if(S.animals.length>=9)return toast('The pen is full');S.coins-=A.price;S.animals.push({k,t:null});toast('A '+A.n+' joined the farm');save();buildAnimals();ui()}
-function deliver(i){const o=S.orders[i];for(const k in o.items)if((S.inv[k]||0)<o.items[k])return;for(const k in o.items)take(k,o.items[k]);S.coins+=o.coins;addXP(o.xp);toast('Delivered! +'+o.coins+' 🪙');S.orders[i]=newOrder();save();ui()}
+function buyAnimal(k){const A=ANIMALS[k];if(S.lvl<A.lvl||S.coins<A.price)return;if(S.animals.length>=9)return toast('The pen is full');S.coins-=A.price;S.animals.push({k,t:null});sfx(k);toast('A '+A.n+' joined the farm');save();buildAnimals();ui()}
+function deliver(i){const o=S.orders[i];for(const k in o.items)if((S.inv[k]||0)<o.items[k])return;for(const k in o.items)take(k,o.items[k]);S.coins+=o.coins;addXP(o.xp);sfx('coin');toast('Delivered! +'+o.coins+' 🪙');S.orders[i]=newOrder();save();ui()}
 function skip(i){S.orders[i]=newOrder();save();ui()}
-function sell(k){if(!take(k))return;const v=Math.ceil(VALUE[k]*.6);S.coins+=v;toast('Sold for '+v+' 🪙');save();ui()}
+function sell(k){if(!take(k))return;const v=Math.ceil(VALUE[k]*.6);S.coins+=v;sfx('coin');toast('Sold for '+v+' 🪙');save();ui()}
 
 // ---------- Panel ----------
 let tab='seeds';
@@ -94,13 +94,29 @@ function ui(){$('coins').textContent=S.coins;$('lvl').textContent=S.lvl;$('xp').
 // ---------- 3D world ----------
 const canvas=$('gl'),renderer=new THREE.WebGLRenderer({canvas,antialias:true});
 renderer.setPixelRatio(Math.min(2,devicePixelRatio));renderer.shadowMap.enabled=true;
-const scene=new THREE.Scene();scene.background=new THREE.Color(0x9fd0f0);scene.fog=new THREE.Fog(0x9fd0f0,40,80);
+const scene=new THREE.Scene();scene.background=tex(2,256,(g,w,h)=>{const gr=g.createLinearGradient(0,0,0,h);gr.addColorStop(0,'#5fa8e0');gr.addColorStop(.6,'#a8d8f5');gr.addColorStop(1,'#e8f6ff');g.fillStyle=gr;g.fillRect(0,0,w,h)});scene.background.wrapS=scene.background.wrapT=THREE.ClampToEdgeWrapping;scene.background.repeat.set(1,1);scene.fog=new THREE.Fog(0x9fd0f0,40,80);
 const cam=new THREE.PerspectiveCamera(45,1,.1,200);cam.position.set(16,22,24);
 const ctl=new THREE.OrbitControls(cam,canvas);ctl.target.set(0,0,5);ctl.enableDamping=true;ctl.maxPolarAngle=1.25;ctl.minDistance=8;ctl.maxDistance=40;ctl.enablePan=false;
 scene.add(new THREE.HemisphereLight(0xffffff,0x6a8a40,.65));
 const sun=new THREE.DirectionalLight(0xfff2d0,.9);sun.position.set(12,20,8);sun.castShadow=true;sun.shadow.mapSize.set(1024,1024);
 Object.assign(sun.shadow.camera,{left:-20,right:20,top:20,bottom:-20});scene.add(sun);
-const M=c=>new THREE.MeshLambertMaterial({color:c});
+// ---- Textures drawn with code (no image files) ----
+function tex(w,h,draw,rx,ry){const c=document.createElement('canvas');c.width=w;c.height=h;const g=c.getContext('2d');draw(g,w,h);const t=new THREE.CanvasTexture(c);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(rx||1,ry||1);return t}
+function speckle(g,w,h,base,cols,n,sz){g.fillStyle=base;g.fillRect(0,0,w,h);for(let i=0;i<n;i++){g.fillStyle=cols[i%cols.length];g.fillRect(Math.random()*w,Math.random()*h,sz*(.5+Math.random()),sz*(.5+Math.random()))}}
+const TEX={
+ 0x7cc350:tex(256,256,(g,w,h)=>{speckle(g,w,h,'#7cc350',['#6fb544','#8bd25e','#74bd49','#93d968'],2600,3);for(let i=0;i<300;i++){g.strokeStyle=i%2?'#5fa53a':'#9be070';g.beginPath();const x=Math.random()*w,y=Math.random()*h;g.moveTo(x,y);g.lineTo(x+Math.random()*4-2,y-5-Math.random()*5);g.stroke()}},24,24),
+ 0x8a5a35:tex(128,128,(g,w,h)=>{speckle(g,w,h,'#8a5a35',['#7a4d2c','#9a6a42','#6e4527','#a37650'],900,3)}),
+ 0x6e4527:tex(64,64,(g,w,h)=>speckle(g,w,h,'#6e4527',['#5d3a20','#7c5232'],200,3)),
+ 0xc0392b:tex(256,256,(g,w,h)=>{g.fillStyle='#c0392b';g.fillRect(0,0,w,h);for(let x=0;x<w;x+=32){g.fillStyle='rgba(0,0,0,.18)';g.fillRect(x,0,3,h);g.fillStyle='rgba(255,255,255,.06)';g.fillRect(x+4,0,8,h)}for(let i=0;i<120;i++){g.fillStyle='rgba(60,10,5,.15)';g.fillRect(Math.random()*w,Math.random()*h,2,10+Math.random()*20)}}),
+ 0x5a3a2a:tex(128,128,(g,w,h)=>{g.fillStyle='#5a3a2a';g.fillRect(0,0,w,h);for(let y=0;y<h;y+=16){g.fillStyle='rgba(0,0,0,.25)';g.fillRect(0,y,w,2);for(let x=(y/16%2)*12;x<w;x+=24){g.fillStyle='rgba(0,0,0,.18)';g.fillRect(x,y,2,16)}}},2,2),
+ 0xe8d9b5:tex(64,64,(g,w,h)=>{speckle(g,w,h,'#e8d9b5',['#d8c7a0','#f2e6c8'],120,2);g.fillStyle='rgba(120,90,50,.25)';for(let y=4;y<h;y+=11)g.fillRect(0,y,w,1)}),
+ 0x7a4b2a:tex(64,64,(g,w,h)=>{g.fillStyle='#7a4b2a';g.fillRect(0,0,w,h);for(let x=0;x<w;x+=5){g.fillStyle=x%10?'#6a3f22':'#8a5a35';g.fillRect(x,0,2,h)}}),
+ 0x3f8a3a:tex(64,64,(g,w,h)=>speckle(g,w,h,'#3f8a3a',['#357a31','#4c9a45','#2f6e2b'],500,3)),
+ 0x4fa046:tex(64,64,(g,w,h)=>speckle(g,w,h,'#4fa046',['#449140','#5cb252'],400,3)),
+ 0xf4f1ea:tex(64,64,(g,w,h)=>{g.fillStyle='#f4f1ea';g.fillRect(0,0,w,h);for(let i=0;i<90;i++){g.fillStyle=i%2?'#e2ddd0':'#ffffff';g.beginPath();g.arc(Math.random()*w,Math.random()*h,3+Math.random()*3,0,7);g.fill()}})
+};
+const MATS={};
+const M=c=>{if(MATS[c])return MATS[c];const m=TEX[c]?new THREE.MeshLambertMaterial({map:TEX[c]}):new THREE.MeshLambertMaterial({color:c});return MATS[c]=m};
 function box(w,h,d,c,x,y,z,p){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;(p||scene).add(m);return m}
 function ball(r,c,x,y,z,p){const m=new THREE.Mesh(new THREE.SphereGeometry(r,10,8),M(c));m.position.set(x,y,z);m.castShadow=true;(p||scene).add(m);return m}
 function cone(r,h,c,x,y,z,p,seg){const m=new THREE.Mesh(new THREE.ConeGeometry(r,h,seg||8),M(c));m.position.set(x,y,z);m.castShadow=true;(p||scene).add(m);return m}
@@ -170,9 +186,53 @@ canvas.addEventListener('pointerup',e=>{if(!down)return;const moved=Math.hypot(e
 
 function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h,false);cam.aspect=w/h;cam.updateProjectionMatrix()}
 addEventListener('resize',resize);resize();
+// ---- Extra scenery ----
+const pathTex=tex(128,128,(g,w,h)=>speckle(g,w,h,'#c9a26b',['#b8915c','#d8b27c','#a8834f'],700,3),1,4);
+const path=new THREE.Mesh(new THREE.PlaneGeometry(2,14),new THREE.MeshLambertMaterial({map:pathTex}));path.rotation.x=-Math.PI/2;path.rotation.z=-.9;path.position.set(-6,.03,-1);path.receiveShadow=true;scene.add(path);
+const mill=new THREE.Group();const tower=new THREE.Mesh(new THREE.CylinderGeometry(.9,1.5,7,8),M(0xe8d9b5));tower.position.y=3.5;tower.castShadow=true;mill.add(tower);
+cone(1.3,1.6,0x5a3a2a,0,7.8,0,mill);const hub=new THREE.Group();hub.position.set(0,6.4,1.25);mill.add(hub);ball(.25,0x5a3a2a,0,0,0,hub);
+for(let i=0;i<4;i++){const arm=new THREE.Group();arm.rotation.z=i*Math.PI/2;hub.add(arm);box(.15,3.4,.08,0x7a4b2a,0,1.7,0,arm);box(.8,2.6,.04,0xfffaf0,.45,2,0,arm)}
+mill.position.set(-14,0,-12);mill.rotation.y=.6;scene.add(mill);
+const fcols=[0xff6b8b,0xffd23f,0xffffff,0xb57cff,0xff8c42];
+for(let i=0;i<70;i++){const a=Math.random()*6.28,r=14+Math.random()*18,x=Math.cos(a)*r,z=Math.sin(a)*r;if(Math.hypot(x-11,z-9)<5)continue;
+ box(.05,.35,.05,0x3f8a3a,x,.17,z);ball(.13,fcols[i%5],x,.38,z)}
+const clouds=[];for(let i=0;i<6;i++){const c=new THREE.Group();const mat=new THREE.MeshLambertMaterial({color:0xffffff});
+ for(let j=0;j<4;j++){const b=new THREE.Mesh(new THREE.SphereGeometry(1.4+Math.random(),10,8),mat);b.position.set(j*1.6-2.4,Math.random()*.6,Math.random()-.5);c.add(b)}
+ c.position.set(Math.random()*60-30,14+Math.random()*5,Math.random()*40-25);scene.add(c);clouds.push(c)}
+function sceneryTick(dt){hub.rotation.z+=dt*.8;clouds.forEach(c=>{c.position.x+=dt*.6;if(c.position.x>35)c.position.x=-35})}
+
+// ---- Sound (made with the Web Audio synthesizer, no audio files) ----
+let AC=null,master=null,musicGain=null,musicOn=true;try{musicOn=localStorage.getItem('meadowMusic')!=='off'}catch(e){}
+function audio(){if(AC)return AC;try{AC=new (window.AudioContext||window.webkitAudioContext)();master=AC.createGain();master.gain.value=.5;master.connect(AC.destination);
+ musicGain=AC.createGain();musicGain.gain.value=musicOn?.18:0;musicGain.connect(master);startMusic()}catch(e){}return AC}
+function note(f,t0,dur,type,vol,dest,slide){const o=AC.createOscillator(),g=AC.createGain();o.type=type||'triangle';o.frequency.setValueAtTime(f,t0);if(slide)o.frequency.exponentialRampToValueAtTime(slide,t0+dur);
+ g.gain.setValueAtTime(0,t0);g.gain.linearRampToValueAtTime(vol||.3,t0+.01);g.gain.exponentialRampToValueAtTime(.001,t0+dur);o.connect(g);g.connect(dest||master);o.start(t0);o.stop(t0+dur+.05)}
+function sfx(k){if(!audio())return;const t=AC.currentTime;
+ if(k==='plant'){note(300,t,.12,'sine',.3,0,180)}
+ else if(k==='harvest'){note(520,t,.1,'triangle',.3);note(780,t+.07,.15,'triangle',.3)}
+ else if(k==='coin'){note(988,t,.08,'square',.12);note(1319,t+.08,.25,'square',.12)}
+ else if(k==='level'){[523,659,784,1047].forEach((f,i)=>note(f,t+i*.1,.3,'triangle',.3))}
+ else if(k==='no'){note(200,t,.18,'sawtooth',.12,0,140)}
+ else if(k==='hen'){[0,.12,.22].forEach(d=>note(900,t+d,.07,'square',.08,0,600))}
+ else if(k==='cow'){note(140,t,.9,'sawtooth',.15,0,95)}
+ else if(k==='sheep'){const o=AC.createOscillator(),l=AC.createOscillator(),lg=AC.createGain(),g=AC.createGain();o.type='sawtooth';o.frequency.value=330;l.frequency.value=18;lg.gain.value=25;l.connect(lg);lg.connect(o.frequency);
+  g.gain.setValueAtTime(.12,t);g.gain.exponentialRampToValueAtTime(.001,t+.7);o.connect(g);g.connect(master);o.start(t);l.start(t);o.stop(t+.75);l.stop(t+.75)}}
+// A gentle original tune: chords plus a simple melody, looped
+const CHORDS=[[262,330,392],[220,262,330],[175,220,262],[196,247,294]];
+const MEL=[784,659,587,523,587,659,784,0, 659,523,440,523,587,523,440,0, 698,659,587,523,440,523,587,0, 587,659,587,523,494,523,587,0];
+let beat=0,nextT=0;
+function startMusic(){nextT=AC.currentTime+.1;setInterval(()=>{if(!AC)return;while(nextT<AC.currentTime+.3){const bar=Math.floor(beat/8)%4,step=beat%32;
+ if(beat%8===0)CHORDS[bar].forEach(f=>note(f/2,nextT,2.2,'sine',.12,musicGain));
+ if(beat%2===0)note(CHORDS[bar][0]/4,nextT,.4,'triangle',.18,musicGain);
+ const m=MEL[step];if(m)note(m,nextT,.35,'triangle',.14,musicGain);
+ nextT+=.3;beat++}},100)}
+function setMusicLabel(){$('mus').textContent=musicOn?'🎵 Music on':'🔇 Music off'}setMusicLabel();
+$('mus').onclick=()=>{musicOn=!musicOn;try{localStorage.setItem('meadowMusic',musicOn?'on':'off')}catch(e){}audio();if(musicGain)musicGain.gain.value=musicOn?.18:0;setMusicLabel()};
+addEventListener('pointerdown',()=>{audio();if(AC&&AC.state==='suspended')AC.resume()});
+document.addEventListener('visibilitychange',()=>{if(AC)document.hidden?AC.suspend():AC.resume()});
 buildPlots();buildAnimals();ui();
 let last=0,clock=0;
-function loop(t){requestAnimationFrame(loop);const dt=Math.min(.05,(t-last)/1000)||0;last=t;clock+=dt;ctl.update();
+function loop(t){requestAnimationFrame(loop);const dt=Math.min(.05,(t-last)/1000)||0;last=t;clock+=dt;ctl.update();sceneryTick(dt);
  if(Math.floor(clock*2)!==Math.floor((clock-dt)*2)){syncScene();if(tab==='orders'||tab==='shop')$('coins').textContent=S.coins}
  cropGroups.forEach(c=>{if(c.ready)c.g.position.y=.3+Math.abs(Math.sin(clock*3))*.12;else c.g.position.y=.3});
  const now=Date.now();animalObjs.forEach((o,i)=>{const a=S.animals[i];if(!a)return;const A=ANIMALS[a.k];
