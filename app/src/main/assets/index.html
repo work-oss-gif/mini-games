@@ -50,6 +50,10 @@ canvas{display:block;touch-action:none}
 .tag.ready span{display:inline-block;font-size:17px;line-height:26px;width:28px;height:28px;border-radius:50%;background:var(--panel);border:2px solid var(--sel);box-shadow:0 2px 4px #0005;animation:bob .5s infinite alternate ease-in-out}
 @keyframes bob{to{transform:translateY(-7px)}}
 .cf{position:fixed;left:0;top:0;font-size:24px;pointer-events:none;transition:transform .6s cubic-bezier(.5,-.3,.6,1),opacity .6s;z-index:9}
+#load{position:fixed;inset:0;z-index:50;display:flex;align-items:center;justify-content:center;text-align:center;background:linear-gradient(#8fd3f4,#7fcf5c 70%,#58b947);color:#fff;text-shadow:0 2px 0 #0005}
+#load h1{font-size:40px;margin:0 0 18px}#load p{font-weight:800}
+.lb{width:220px;height:18px;border-radius:10px;background:#0004;border:3px solid #fff;overflow:hidden;margin:0 auto}
+.lb i{display:block;height:100%;width:0;background:linear-gradient(#ffe36e,#ffb800);transition:width .15s}
 .days{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin:10px 0}
 .days span{background:var(--btn);border-radius:10px;padding:6px 2px;text-align:center;font-size:11px;border:2px solid transparent}
 .days b{display:block;font-size:13px}.days .got{opacity:.45}.days .now{border-color:#b8860b;background:var(--sel);color:#4a2f14}
@@ -57,32 +61,75 @@ canvas{display:block;touch-action:none}
 </head>
 <body>
 <div id="top"><span class="chip" id="coins">🪙 0</span><span class="chip" id="snd" onclick="toggleSound()">🔊</span><span class="chip" id="lvl"><span id="lvt">⭐ Lv 1</span><span id="xpw"><span id="xpb"></span></span></span></div>
+<div id="load"><div><h1>🌾 Sunny Acres</h1><div class="lb"><i id="lbar"></i></div><p>Loading the farm…</p></div></div>
 <div id="tags"></div>
 <div id="toast"></div>
 <div id="tip"></div>
 <div id="bar"></div>
 <div id="modal"><div class="box" id="mbox"></div></div>
 <script src="three.min.js"></script>
+<script src="GLTFLoader.js"></script>
+<script src="SkeletonUtils.js"></script>
+<script src="models.js"></script>
 <script>
 // ===== Game data =====
 const CROPS={
   wheat:{name:'Wheat',icon:'🌾',cost:2,sell:5,time:20,xp:1,lvl:1,color:0xe8c547},
   carrot:{name:'Carrot',icon:'🥕',cost:5,sell:12,time:45,xp:2,lvl:2,color:0xf08a24},
   corn:{name:'Corn',icon:'🌽',cost:10,sell:26,time:90,xp:4,lvl:3,color:0xf5e04a},
-  pumpkin:{name:'Pumpkin',icon:'🎃',cost:20,sell:55,time:180,xp:8,lvl:5,color:0xe0701c}
+  pumpkin:{name:'Pumpkin',icon:'🎃',cost:20,sell:55,time:180,xp:8,lvl:5,color:0xe0701c},
+  tomato:{name:'Tomato',icon:'🍅',cost:14,sell:36,time:120,xp:5,lvl:4,color:0xe53935},
+  lettuce:{name:'Lettuce',icon:'🥬',cost:28,sell:75,time:240,xp:10,lvl:6,color:0x8bc34a},
+  beet:{name:'Beet',icon:'🍠',cost:40,sell:105,time:360,xp:14,lvl:8,color:0x9c2759},
+  watermelon:{name:'Watermelon',icon:'🍉',cost:60,sell:160,time:600,xp:22,lvl:10,color:0x2e7d32}
 };
 const RECIPES={
-  bread:{name:'Bread',icon:'🍞',need:{wheat:3},time:60,sell:32,xp:5,lvl:2},
-  popcorn:{name:'Popcorn',icon:'🍿',need:{corn:2},time:90,sell:85,xp:8,lvl:3},
-  cake:{name:'Carrot cake',icon:'🍰',need:{carrot:2,egg:1,wheat:1},time:120,sell:80,xp:10,lvl:4},
-  pie:{name:'Pumpkin pie',icon:'🥧',need:{pumpkin:2,egg:1},time:240,sell:210,xp:20,lvl:5}
+  bread:{b:'bakery',name:'Bread',icon:'🍞',need:{wheat:3},time:60,sell:32,xp:5,lvl:2},
+  popcorn:{b:'bakery',name:'Popcorn',icon:'🍿',need:{corn:2},time:90,sell:85,xp:8,lvl:3},
+  cake:{b:'bakery',name:'Carrot cake',icon:'🍰',need:{carrot:2,egg:1,wheat:1},time:120,sell:80,xp:10,lvl:4},
+  pie:{b:'bakery',name:'Pumpkin pie',icon:'🥧',need:{pumpkin:2,egg:1},time:240,sell:210,xp:20,lvl:5},
+  applepie:{b:'bakery',name:'Apple tart',icon:'🥮',need:{apple:3,wheat:2,egg:1},time:200,sell:170,xp:18,lvl:6},
+  butter:{b:'dairy',name:'Butter',icon:'🧈',need:{milk:1},time:60,sell:52,xp:5,lvl:4},
+  cheese:{b:'dairy',name:'Cheese',icon:'🧀',need:{milk:2},time:150,sell:105,xp:11,lvl:5},
+  pizza:{b:'dairy',name:'Pizza',icon:'🍕',need:{cheese:1,tomato:2,wheat:2},time:240,sell:320,xp:28,lvl:7},
+  jam:{b:'press',name:'Berry jam',icon:'🍯',need:{berry:3},time:120,sell:110,xp:10,lvl:5},
+  ajuice:{b:'press',name:'Apple juice',icon:'🧃',need:{apple:3},time:90,sell:90,xp:9,lvl:5},
+  ojuice:{b:'press',name:'Orange juice',icon:'🍹',need:{orange:3},time:120,sell:130,xp:12,lvl:6},
+  salad:{b:'press',name:'Garden salad',icon:'🥗',need:{lettuce:1,tomato:1,carrot:1},time:150,sell:230,xp:20,lvl:7}
 };
+const BLD={bakery:{name:'Bakery',icon:'🥖',cost:80,lvl:2,verb:'Bake'},
+  dairy:{name:'Dairy',icon:'🧀',cost:350,lvl:4,verb:'Make',model:'Silo_House',h:7,pos:[18,10],rot:-Math.PI/2},
+  press:{name:'Kitchen & juice press',icon:'🧃',cost:500,lvl:5,verb:'Make',model:'OpenBarn',h:4,pos:[12,-16.5],rot:0}};
+const GOODS={milk:{name:'Milk',icon:'🥛',sell:30,xp:3},wool:{name:'Wool',icon:'🧶',sell:55,xp:5},truffle:{name:'Truffle',icon:'🍄',sell:90,xp:8},
+  fish:{name:'Fish',icon:'🐟',sell:22,xp:2},apple:{name:'Apple',icon:'🍎',sell:18,xp:2},orange:{name:'Orange',icon:'🍊',sell:26,xp:3},berry:{name:'Berries',icon:'🫐',sell:22,xp:2}};
+const ANIMALS={cow:{name:'Cow',icon:'🐄',model:'Cow',h:1.9,prod:'milk',time:120,cost:150,lvl:3},
+  sheep:{name:'Sheep',icon:'🐑',model:'Sheep',h:1.5,prod:'wool',time:180,cost:240,lvl:5},
+  pig:{name:'Pig',icon:'🐖',model:'Pig',h:1.25,prod:'truffle',time:240,cost:340,lvl:7}};
+const FRUIT={berry:{name:'Berry bush',icon:'🫐',model:'BushBerries',h:1.6,time:100,cost:90,lvl:3,n:3},
+  apple:{name:'Apple tree',icon:'🍎',model:'Apple',h:3.4,time:150,cost:140,lvl:4,n:3},
+  orange:{name:'Orange tree',icon:'🍊',model:'Orange',h:3.4,time:200,cost:220,lvl:6,n:3}};
+const DECOR=[{id:'well',name:'Stone well',icon:'⛲',model:'Well',h:2.3,cost:150,lvl:3,pos:[-5,10.3]},
+  {id:'tower',name:'Water tower',icon:'🗼',model:'WaterTower',h:6.5,cost:400,lvl:5,pos:[-17,-10]},
+  {id:'pump',name:'Wind pump',icon:'🌬️',model:'Windmill',h:6.5,cost:650,lvl:7,pos:[6.5,-11]},
+  {id:'silo',name:'Grain silo',icon:'🏛️',model:'Silo',h:7.5,cost:900,lvl:8,pos:[-17.5,4.5]}];
+const ACH=[{id:'h1',name:'Green thumb',d:'Harvest 20 crops',s:'harv',g:20,r:40},{id:'h2',name:'Master farmer',d:'Harvest 300 crops',s:'harv',g:300,r:300},{id:'h3',name:'Harvest legend',d:'Harvest 2,000 crops',s:'harv',g:2000,r:1500},
+  {id:'c1',name:'First fortune',d:'Earn 🪙500 from sales',s:'coin',g:500,r:60},{id:'c2',name:'Trader',d:'Earn 🪙5,000 from sales',s:'coin',g:5000,r:400},{id:'c3',name:'Tycoon',d:'Earn 🪙50,000 from sales',s:'coin',g:50000,r:3000},
+  {id:'o1',name:'Reliable',d:'Deliver 5 orders',s:'ord',g:5,r:80},{id:'o2',name:'Town favourite',d:'Deliver 50 orders',s:'ord',g:50,r:600},
+  {id:'a1',name:'Animal friend',d:'Collect 30 animal products',s:'prod',g:30,r:150},{id:'a2',name:'Rancher',d:'Collect 500 animal products',s:'prod',g:500,r:1200},
+  {id:'m1',name:'Head chef',d:'Make 15 goods',s:'made',g:15,r:200},{id:'m2',name:'Factory boss',d:'Make 300 goods',s:'made',g:300,r:2000},
+  {id:'f1',name:'Angler',d:'Catch 20 fish',s:'fish',g:20,r:120},{id:'t1',name:'Orchard keeper',d:'Pick 60 fruits',s:'fruit',g:60,r:250}];
+const PAST={x:19,z:-1,r:5.2},ORCH=[[16,-9.5],[19.5,-9.5],[23,-9.5],[16,-13],[19.5,-13],[23,-13]],CX=4,CZ=-1;
 const EGG={name:'Egg',icon:'🥚',sell:15,time:60,xp:2};
 const GRID=6, TILE=2;
 const KEY='sunnyacres_v1';
 let S={coins:30,xp:0,plots:{},owned:[],barn:{},coop:false,hens:[],tool:'wheat',mute:false,orders:[],done:0,bakery:false,oven:[],lastDay:'',streak:0,sold:0,stand:[]};
 function load(){try{const t=localStorage.getItem(KEY);if(t)S=Object.assign(S,JSON.parse(t));}catch(e){}
   if(S.tut==null)S.tut=S.xp>0?5:0;
+  if(!S.bld)S.bld={};for(const id in BLD)if(!S.bld[id])S.bld[id]={built:false,q:[]};
+  if(S.bakery){S.bld.bakery.built=true;S.bld.bakery.q=S.oven||[];S.bakery=false;S.oven=[];}
+  if(!S.an)S.an={};for(const k in ANIMALS)if(!S.an[k])S.an[k]=[];
+  if(!S.orch)S.orch=[null,null,null,null,null,null];if(!S.decor)S.decor={};if(!S.ach)S.ach={};
+  S.st=Object.assign({harv:0,coin:0,prod:0,made:0,fish:0,fruit:0},S.st||{});if(!S.fishT)S.fishT=0;
   if(!S.owned.length){for(let x=2;x<4;x++)for(let z=2;z<4;z++)S.owned.push(x+','+z);} }
 function save(){try{localStorage.setItem(KEY,JSON.stringify(S));}catch(e){}}
 load();
@@ -105,15 +152,17 @@ const hemi=new THREE.HemisphereLight(0xffffff,0x557744,0.7);scene.add(hemi);
 const sun=new THREE.DirectionalLight(0xfff2d6,0.9);sun.position.set(12,20,8);sun.castShadow=true;
 sun.shadow.mapSize.set(1024,1024);Object.assign(sun.shadow.camera,{left:-20,right:20,top:20,bottom:-20});scene.add(sun);
 function applyTheme(){const d=isDarkPage();
-  const sky=d?0x1a2340:0x9fd8f5;scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,70,140);
+  const sky=d?0x1a2340:0x9fd8f5;scene.background=new THREE.Color(sky);scene.fog=new THREE.Fog(sky,85,170);
   hemi.intensity=d?0.45:0.75;sun.intensity=d?0.45:0.95;sun.color.set(d?0x9db4ff:0xfff2d6);
   lamps.forEach(l=>l.visible=d);}
 window.setTheme=t=>{document.documentElement.setAttribute('data-theme',t);applyTheme();};
 
 const M=c=>new THREE.MeshLambertMaterial({color:c});
 const box=(w,h,d,c)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),M(c));m.castShadow=m.receiveShadow=true;return m;};
-const anim=[]; // small functions that run every frame: (time, dt)
+const anim=[],treeList=[],oldFence=[],oldFlowers=[],flowerSpots=[]; // anim: functions that run every frame (time, dt)
+const blocked=(x,z)=>Math.abs(z-13)<1.8||Math.hypot(x-2,z-10.6)<2.5||Math.hypot(x-10,z+8)<4.3||Math.hypot(x+11.5,z+3)<5.5||Math.hypot(x-10,z-4)<4.5||Math.hypot(x+11,z-9)<4.5||Math.hypot(x+1,z+11.5)<4||(Math.abs(x)<8.5&&Math.abs(z)<8.5)||Math.hypot(x-PAST.x,z-PAST.z)<7||(x>13.5&&x<25.5&&z>-15.5&&z<-7.5)||Math.hypot(x-18,z-10)<4||Math.hypot(x-12,z+16.5)<4.5||DECOR.some(d=>Math.hypot(x-d.pos[0],z-d.pos[1])<3);
 const ball=(r,c)=>{const m=new THREE.Mesh(new THREE.SphereGeometry(r,14,10),M(c));m.castShadow=true;return m;};
+const flat=(r,c,y)=>{const m=new THREE.Mesh(new THREE.CircleGeometry(r,28),M(c));m.rotation.x=-Math.PI/2;m.position.y=y;m.receiveShadow=true;scene.add(m);return m;};
 // grass ground
 const ground=new THREE.Mesh(new THREE.CircleGeometry(45,48),M(0x6cbf4a));ground.rotation.x=-Math.PI/2;ground.receiveShadow=true;scene.add(ground);
 const off=-(GRID*TILE)/2+TILE/2;
@@ -130,7 +179,7 @@ const barn=new THREE.Group();
 const bBody=box(4,3,3,0xb8322a);bBody.position.y=1.5;barn.add(bBody);
 const roof=new THREE.Mesh(new THREE.ConeGeometry(3.2,1.8,4),M(0x6b3b1f));roof.position.y=3.9;roof.rotation.y=Math.PI/4;roof.scale.z=0.75;roof.castShadow=true;barn.add(roof);
 const door=box(1.4,1.9,0.1,0xf2e6c9);door.position.set(0,0.95,1.52);barn.add(door);
-barn.position.set(-10,0,-3);barn.rotation.y=Math.PI/2;barn.traverse(o=>o.userData={type:'barn'});scene.add(barn);
+barn.position.set(-11.5,0,-3);barn.rotation.y=Math.PI/2;barn.traverse(o=>o.userData={type:'barn'});scene.add(barn);
 // coop
 const coop=new THREE.Group();
 const cB=box(2.6,1.6,2,0xf0d9a8);cB.position.y=0.8;coop.add(cB);
@@ -150,6 +199,17 @@ const bakery=new THREE.Group(),bakeBuilt=new THREE.Group(),bakeSite=new THREE.Gr
   const sg=box(1.4,0.8,0.1,0xffe08a);sg.position.y=1.5;bakeSite.add(sg);
   for(let i=0;i<3;i++){const pk=box(0.9,0.3,0.3,0xc98d4f);pk.position.set(-1+i*0.2,0.25+i*0.3,0.8);bakeSite.add(pk);}
   bakery.position.set(-1,0,-11.5);bakery.traverse(o=>o.userData={type:'bakery'});scene.add(bakery);}
+// more production buildings (same idea as the bakery: a building site until it is built)
+function mkSite(){const g=new THREE.Group();const sl=box(3.8,0.12,3,0xcbb894);sl.position.y=0.06;g.add(sl);const po=box(0.14,1.5,0.14,0x7a4a26);po.position.y=0.75;g.add(po);
+  const sg=box(1.4,0.8,0.1,0xffe08a);sg.position.y=1.5;g.add(sg);return g;}
+const bldObj={bakery:{g:bakery,built:bakeBuilt,site:bakeSite,h:4.2}};
+for(const id of ['dairy','press']){const B=BLD[id],g=new THREE.Group(),built=new THREE.Group(),site=mkSite();const ph=box(3,2.5,2.6,0xb8322a);ph.position.y=1.25;built.add(ph);
+  g.add(built,site);g.position.set(B.pos[0],0,B.pos[1]);g.rotation.y=B.rot;g.traverse(o=>o.userData={type:'bakery',b:id});scene.add(g);bldObj[id]={g,built,site,h:B.h};}
+function syncBld(){for(const id in BLD){bldObj[id].built.visible=S.bld[id].built;bldObj[id].site.visible=!S.bld[id].built;}}
+// pasture for cows, sheep and pigs; orchard spots for fruit trees
+const pasture=flat(PAST.r+0.3,0x9bdc6e,0.015);pasture.position.set(PAST.x,0.015,PAST.z);pasture.userData={type:'pasture'};
+const orchObjs=ORCH.map(([x,z],i)=>{const g=new THREE.Group();const d=new THREE.Mesh(new THREE.CylinderGeometry(1.1,1.2,0.14,16),M(0x8b5a2b));d.position.y=0.07;d.receiveShadow=true;d.userData={type:'orch',i};
+  g.add(d);g.position.set(x,0,z);scene.add(g);return {g,key:''};});
 const arrow=new THREE.Mesh(new THREE.ConeGeometry(0.55,1.3,12),new THREE.MeshBasicMaterial({color:0xffd23f}));arrow.rotation.x=Math.PI;arrow.visible=false;scene.add(arrow);
 // road, roadside stand and the neighbours who walk past and shop there
 const STX=2,road=box(64,0.06,2.4,0xdcbb7e);road.position.set(0,0.03,13);road.castShadow=false;scene.add(road);
@@ -184,20 +244,19 @@ function tree(x,z,s){const g=new THREE.Group();
   const top=new THREE.Group();top.position.y=1.4;g.add(top);
   [[0,0.8,0,1.15,0x4fae45],[0.7,0.5,0.2,0.8,0x45a03c],[-0.6,0.55,-0.3,0.85,0x5aba4e],[0.1,1.5,0,0.75,0x66c658]].forEach(([a,b,c,r,col])=>{const l=ball(r,col);l.position.set(a,b,c);top.add(l);});
   for(let i=0;i<4;i++){const a=ball(0.13,0xe53935);a.position.set(Math.cos(i*1.9)*0.95,0.6+i*0.25,Math.sin(i*1.9)*0.95);top.add(a);}
-  g.position.set(x,0,z);g.scale.setScalar(s);scene.add(g);
-  anim.push(t=>{top.rotation.z=Math.sin(t*1.1+x)*0.04;top.rotation.x=Math.cos(t*0.9+z)*0.03;});}
-[[-14,10,1.2],[-16,-9,1],[14,-10,1.3],[16,12,0.9],[0,-15,1.1],[-7,18.5,1],[10,18.5,1.2],[-18,2,1]].forEach(a=>tree(...a));
+  g.position.set(x,0,z);g.scale.setScalar(s);scene.add(g);treeList.push({g,s});
+  anim.push(t=>{const o=g.userData.top||top;o.rotation.z=Math.sin(t*1.1+x)*0.03;o.rotation.x=Math.cos(t*0.9+z)*0.02;});}
+[[-15,12.5,1.2],[-21,-13,1],[5,-17,1.3],[24,16,0.9],[0,-16.5,1.1],[-7,18.5,1],[10,18.5,1.2],[-21.5,0,1]].forEach(a=>tree(...a));
 [[-7,-7],[7,-7],[-7,7],[7,7]].forEach(([x,z])=>{const p=box(0.2,2.4,0.2,0x333333);p.position.set(x,1.2,z);scene.add(p);
   const b=new THREE.Mesh(new THREE.SphereGeometry(0.3,8,8),new THREE.MeshBasicMaterial({color:0xffd780}));b.position.set(x,2.5,z);scene.add(b);
   const L=new THREE.PointLight(0xffc870,1,12);L.position.set(x,2.5,z);scene.add(L);lamps.push(L,b);});
 
 // ----- scenery: path, pond with duck, windmill, fence, hay, flowers, butterflies -----
-const flat=(r,c,y)=>{const m=new THREE.Mesh(new THREE.CircleGeometry(r,28),M(c));m.rotation.x=-Math.PI/2;m.position.y=y;m.receiveShadow=true;scene.add(m);return m;};
 [[-15,-14,5],[13,14,6],[-3,17,4],[18,-2,5],[-19,8,4]].forEach(([x,z,r])=>flat(r,0x7bcb55,0.01).position.set(x,0.01,z));
 const path=box(3.4,0.06,1.7,0xdcbb7e);path.position.set(-7.6,0.03,-3);scene.add(path);
 flat(3.5,0xe3cf9a,0.02).position.set(10,0.02,-8);
 const water=new THREE.Mesh(new THREE.CircleGeometry(3,28),new THREE.MeshLambertMaterial({color:0x4fb4e8,transparent:true,opacity:0.9}));
-water.rotation.x=-Math.PI/2;water.position.set(10,0.04,-8);scene.add(water);
+water.rotation.x=-Math.PI/2;water.position.set(10,0.04,-8);water.userData={type:'pond'};scene.add(water);
 const duck=new THREE.Group();{const b=ball(0.3,0xffe45c);b.scale.set(1.2,0.8,1);b.position.y=0.18;duck.add(b);
   const h=ball(0.18,0xffe45c);h.position.set(0.28,0.45,0);duck.add(h);const bk=box(0.16,0.06,0.12,0xff9800);bk.position.set(0.47,0.42,0);duck.add(bk);scene.add(duck);}
 anim.push(t=>{const a=t*0.35;duck.position.set(10+Math.cos(a)*1.6,0.04+Math.sin(t*3)*0.02,-8+Math.sin(a)*1.6);duck.rotation.y=-a-Math.PI/2;
@@ -210,13 +269,13 @@ const mill=new THREE.Group();{const tw=new THREE.Mesh(new THREE.CylinderGeometry
   mill.position.set(-11,0,9);mill.rotation.y=0.9;scene.add(mill);anim.push((t,dt)=>{hub.rotation.z-=dt*1.2;});}
 {const F=7.4;for(let s=0;s<4;s++){const g=new THREE.Group();g.rotation.y=s*Math.PI/2;
   for(let i=-3;i<=3;i++){if(s===3&&i===-2)continue;const p=box(0.18,0.9,0.18,0xf5efe0);p.position.set(i*2.1,0.45,F);g.add(p);}
-  [0.35,0.7].forEach(y=>{const r=box(s===3?8.3:F*2,0.1,0.08,0xf5efe0);r.position.set(s===3?2.1:0,y,F);g.add(r);});scene.add(g);}}
+  [0.35,0.7].forEach(y=>{const r=box(s===3?8.3:F*2,0.1,0.08,0xf5efe0);r.position.set(s===3?2.1:0,y,F);g.add(r);});scene.add(g);oldFence.push(g);}}
 [[-12.5,-6.5],[-13.2,-5.2],[-12.6,-5.8,1]].forEach(([x,z,up])=>{const h=new THREE.Mesh(new THREE.CylinderGeometry(0.6,0.6,1,14),M(0xe9c85a));h.rotation.z=Math.PI/2;h.position.set(x,up?1.55:0.6,z);h.castShadow=true;scene.add(h);});
 {let seed=7;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;const cols=[0xff6fa5,0xffd54a,0xffffff,0xb388ff,0xff8a50];
   for(let i=0;i<46;i++){const a=rnd()*6.283,r=10+rnd()*20,x=Math.cos(a)*r,z=Math.sin(a)*r;
-    if(Math.abs(z-13)<1.8||Math.hypot(x-2,z-10.6)<2.5||Math.hypot(x-10,z+8)<4||Math.hypot(x+10,z+3)<4||Math.hypot(x-10,z-4)<4.5||Math.hypot(x+11,z-9)<2.5)continue;
+    if(blocked(x,z))continue;
     const st=box(0.05,0.35,0.05,0x3f8f2f);st.position.set(x,0.17,z);st.castShadow=false;scene.add(st);
-    const f=ball(0.13,cols[i%5]);f.castShadow=false;f.position.set(x,0.4,z);scene.add(f);}}
+    const f=ball(0.13,cols[i%5]);f.castShadow=false;f.position.set(x,0.4,z);scene.add(f);oldFlowers.push(st,f);flowerSpots.push([x,z]);}}
 for(let i=0;i<5;i++){const b=new THREE.Group(),mat=new THREE.MeshBasicMaterial({color:[0xff9ed2,0xfff59d,0x9be7ff,0xffb74d,0xe1bee7][i],side:THREE.DoubleSide});
   const w1=new THREE.Mesh(new THREE.PlaneGeometry(0.28,0.22),mat),w2=w1.clone();w1.position.x=0.14;w2.position.x=-0.14;
   const p1=new THREE.Group(),p2=new THREE.Group();p1.add(w1);p2.add(w2);b.add(p1,p2);scene.add(b);
@@ -236,22 +295,56 @@ function updateParts(dt){for(let i=parts.length-1;i>=0;i--){const m=parts[i],u=m
 function floatText(txt,pos){const v=pos.clone();v.y+=1.2;v.project(cam);const d=document.createElement('div');d.className='fl';d.textContent=txt;
   d.style.left=((v.x+1)/2*innerWidth)+'px';d.style.top=((1-v.y)/2*innerHeight)+'px';document.body.appendChild(d);setTimeout(()=>d.remove(),1100);}
 
-// ----- crop models: each plant is its own little group so it can sway -----
-function makeCrop(type){const c=CROPS[type],g=new THREE.Group();
-  const n=type==='pumpkin'?4:9,side=type==='pumpkin'?2:3;
-  for(let i=0;i<n;i++){const pl=new THREE.Group();
-    pl.position.set(((i%side)-(side-1)/2)*(1.5/side)+(i%2?0.05:-0.05),0,(Math.floor(i/side)-(side-1)/2)*(1.5/side));
-    const leaf=(w,h,y,rz,ry)=>{const l=ball(0.5,0x4caf50);l.scale.set(w,h,0.06);l.position.y=y;l.rotation.set(0,ry||0,rz);l.castShadow=false;pl.add(l);return l;};
-    if(type==='wheat'){const s=box(0.05,0.8,0.05,0xb8c24a);s.position.y=0.4;pl.add(s);
-      const h=ball(0.11,c.color);h.scale.set(1,2.6,1);h.position.y=0.95;pl.add(h);leaf(0.12,0.5,0.35,0.6);leaf(0.12,0.5,0.3,-0.6);}
-    else if(type==='carrot'){for(let j=0;j<4;j++)leaf(0.14,0.75,0.35,(j%2?0.45:-0.45),j*0.8);
-      const top=new THREE.Mesh(new THREE.ConeGeometry(0.15,0.3,8),M(c.color));top.rotation.x=Math.PI;top.position.y=0.08;pl.add(top);}
-    else if(type==='corn'){const s=box(0.09,1.3,0.09,0x4c9a34);s.position.y=0.65;pl.add(s);
-      leaf(0.14,0.8,0.6,0.8);leaf(0.14,0.8,0.8,-0.8,1);const cob=ball(0.13,c.color);cob.scale.set(1,2.2,1);cob.position.set(0.14,0.85,0);pl.add(cob);}
-    else{const p=ball(0.36,c.color);p.scale.set(1.15,0.8,1.15);p.position.y=0.28;pl.add(p);
-      const st=box(0.07,0.18,0.07,0x3f8f2f);st.position.y=0.62;pl.add(st);const l=leaf(0.5,0.3,0.1,0,i);l.rotation.x=Math.PI/2;l.position.x=0.4;}
+// ----- artist-made 3D models (public-domain packs by Quaternius), stored in models.js -----
+const LIB={};
+function prepModel(o){o.traverse(m=>{if(!m.isMesh)return;m.castShadow=true;
+  // the packs use muted colours; lift the saturation a little so they match the game's bright cartoon lighting
+  const grade=c=>{const h={};c=c.clone().convertLinearToSRGB();c.getHSL(h);return c.setHSL(h.h,Math.min(1,h.s*1.7),h.l*0.85);};
+  const conv=a=>{const b=new THREE.MeshLambertMaterial({color:grade(a.color),map:a.map||null});if(a.vertexColors)b.vertexColors=true;return b;};
+  m.material=Array.isArray(m.material)?m.material.map(conv):conv(m.material);});}
+async function loadModels(){const L=new THREE.GLTFLoader(),names=Object.keys(typeof MODELS!=='undefined'?MODELS:{}),bar=document.getElementById('lbar');
+  for(let n=0;n<names.length;n++){const nm=names[n],bin=atob(MODELS[nm]),u=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i);
+    await new Promise(res=>L.parse(u.buffer,'',g=>{prepModel(g.scene);g.box=new THREE.Box3().setFromObject(g.scene);LIB[nm]=g;res();},()=>res()));
+    MODELS[nm]=null;bar.style.width=Math.round((n+1)/names.length*100)+'%';if(n%6===5)await new Promise(r=>setTimeout(r,0));}}
+// a copy of a model, standing on the ground, centred, scaled to a height (or to a width with by='w')
+function inst(name,size,by){const g=LIB[name];if(!g)return null;const o=g.animations.length?THREE.SkeletonUtils.clone(g.scene):g.scene.clone();
+  const sz=g.box.getSize(new THREE.Vector3()),k=size/(by==='w'?Math.max(sz.x,sz.z):sz.y),w=new THREE.Group();
+  o.scale.multiplyScalar(k);o.position.set(-(g.box.min.x+sz.x/2)*k,-g.box.min.y*k,-(g.box.min.z+sz.z/2)*k);w.add(o);w.userData.clips=g.animations;w.userData.root=o;return w;}
+function swapIn(group,name,size,type,rotY){const m=inst(name,size);if(!m)return null;[...group.children].forEach(c=>group.remove(c));m.rotation.y=rotY||0;group.add(m);
+  if(type)group.traverse(o=>{o.userData=Object.assign(o===m?o.userData:{},{type});});return m;}
+function applyModels(){
+  swapIn(barn,'BigBarn',6.2,'barn');swapIn(bakeBuilt,'SmallBarn',4.2,'bakery');
+  for(const id of ['dairy','press']){swapIn(bldObj[id].built,BLD[id].model,BLD[id].h,'bakery');bldObj[id].built.traverse(o=>{o.userData.b=id;});}
+  if(LIB.Fence)for(let i=0;i<8;i++){if(i===4)continue;const a=i/8*Math.PI*2,m=inst('Fence',4.45,'w');m.position.set(PAST.x+Math.cos(a)*(PAST.r+0.25),0,PAST.z+Math.sin(a)*(PAST.r+0.25));m.rotation.y=-a+Math.PI/2;scene.add(m);}swapIn(mill,'TowerWindmill',8.5);
+  {const m=inst('ChickenCoop',2.3);if(m){[...coop.children].filter(c=>c.geometry&&c.geometry.parameters.width>1).forEach(c=>coop.remove(c));m.rotation.y=-Math.PI/2;coop.add(m);m.traverse(o=>{o.userData={type:'coop'};});}}
+  const kinds=['CommonTree_1','CommonTree_2','CommonTree_3','BirchTree_1','PineTree_1','Willow_1'];
+  treeList.forEach((t,i)=>{const m=inst(kinds[i%kinds.length],4.6*t.s);if(!m)return;[...t.g.children].forEach(c=>t.g.remove(c));t.g.scale.set(1,1,1);m.rotation.y=i*1.3;t.g.add(m);t.g.userData.top=m;});
+  if(LIB.Fence){oldFence.forEach(g=>scene.remove(g));for(let s=0;s<4;s++){const g=new THREE.Group();g.rotation.y=s*Math.PI/2;
+    for(let j=-1;j<=1;j++){const m=inst('Fence',4.93,'w');m.position.set(j*4.93,0,7.4);g.add(m);}scene.add(g);}}
+  let seed=11;const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  const put=(name,size,x,z,by)=>{const m=inst(name,size,by);if(!m)return;m.position.set(x,0,z);m.rotation.y=rnd()*6.283;m.traverse(o=>{if(o.isMesh)o.castShadow=size>0.9;});scene.add(m);return m;};
+  if(LIB.Flowers){oldFlowers.forEach(o=>scene.remove(o));flowerSpots.forEach(([x,z])=>put('Flowers',0.7+rnd()*0.3,x,z));}
+  const scatter=(name,n,lo,hi,r0,r1)=>{for(let i=0,tries=0;i<n&&tries<400;tries++){const a=rnd()*6.283,r=r0+rnd()*(r1-r0),x=Math.cos(a)*r,z=Math.sin(a)*r;if(blocked(x,z))continue;put(name,lo+rnd()*(hi-lo),x,z);i++;}};
+  scatter('Grass',55,0.45,0.8,9,32);scatter('Bush_1',9,1,1.6,12,34);scatter('Rock_1',5,0.7,1.4,13,34);scatter('Rock_2',5,0.6,1.1,12,34);scatter('Rock_Moss_1',4,0.8,1.5,14,34);
+  scatter('TreeStump',3,0.6,0.8,14,30);scatter('WoodLog',3,0.6,0.7,14,30);
+  for(const k of kinds)scatter(k,3,4,6.5,22,40);
+  [[1.2,0.8],[-1.4,1.3],[0.3,-1.7]].forEach(([dx,dz])=>{const m=put('Lilypad',0.9,10+dx,-8+dz,'w');if(m)m.position.y=0.03;});
+}
+const CROPM={wheat:{m:'Wheat',n:4,k:1.25},carrot:{m:'Carrot',n:3,k:0.9},corn:{m:'Corn',n:3,k:0.85},pumpkin:{m:'Pumpkin',n:2,k:0.62},
+  tomato:{m:'Tomato',n:3,k:0.8},lettuce:{m:'Lettuce',n:3,k:0.5},beet:{m:'Beet',n:3,k:0.85},watermelon:{m:'Watermelon',n:2,k:0.62}};
+function makeCrop(type){return new THREE.Group();}
+// one growth stage (1 to 4) of a field: a small grid of plants, each in its own group so it can sway
+function buildStage(type,st,key){const C=CROPM[type],g=new THREE.Group(),src=LIB[C.m+'_'+st],n=C.n,step=1.6/n;
+  for(let i=0;i<n*n;i++){const pl=new THREE.Group();pl.position.set(((i%n)-(n-1)/2)*step+((i*7)%3-1)*0.04,0,(Math.floor(i/n)-(n-1)/2)*step+((i*5)%3-1)*0.04);
+    if(src){const o=src.scene.clone();o.scale.multiplyScalar(C.k);o.rotation.y=i*2.4;pl.add(o);}
+    else{const b=box(0.12,0.2+st*0.2,0.12,0x4caf50);b.position.y=0.1+st*0.1;pl.add(b);}
     g.add(pl);}
-  return g;}
+  g.traverse(o=>{o.userData={type:'crop',k:key};});return g;}
+function animCrop(m,p,g,ripe,time,key){const st=ripe?4:1+Math.min(2,Math.floor(g*3));
+  if(m.userData.st!==st){if(m.userData.cur)m.remove(m.userData.cur);m.userData.cur=buildStage(p.type,st,key);m.add(m.userData.cur);if(m.userData.st)m.userData.born=time-0.2;m.userData.st=st;}
+  const age=(time-m.userData.born)/0.45,pop=age<1?age*(1+0.6*Math.sin(age*Math.PI)):1,s=pop*(ripe?1+Math.sin(time*5)*0.05:0.85+0.15*((g*3)%1));
+  m.scale.set(s,s,s);
+  m.userData.cur.children.forEach((pl,i)=>{pl.rotation.z=Math.sin(time*1.8+i*0.9+m.userData.ph)*(ripe?0.12:0.07);pl.rotation.x=Math.cos(time*1.3+i)*0.04;});}
 
 // hens
 const henObjs=[];
@@ -262,12 +355,12 @@ function makeHen(){const g=new THREE.Group();const b=new THREE.Mesh(new THREE.Sp
   const egg=new THREE.Mesh(new THREE.SphereGeometry(0.16,8,8),M(0xfff3d6));egg.scale.y=1.3;egg.position.y=1.4;g.add(egg);g.userData.egg=egg;
   g.traverse(o=>{if(o!==g)o.userData={type:'hen',g};});
   g.userData.t=Math.random()*10;scene.add(g);return g;}
-function syncHens(){coop.visible=S.coop;bakeBuilt.visible=S.bakery;bakeSite.visible=!S.bakery;while(henObjs.length<S.hens.length)henObjs.push(makeHen());}
+function syncHens(){coop.visible=S.coop;syncBld();syncAnimals();syncDecor();while(henObjs.length<S.hens.length)henObjs.push(makeHen());}
 
 // ===== Camera control: drag to rotate, pinch to zoom =====
-let yaw=0.7,pitch=0.95,dist=46;
-let intro=1; // opening camera swoop: 1 -> 0
-function placeCam(){const e=intro*intro,y=yaw-e*1.6,d=dist+e*26;cam.position.set(Math.sin(y)*Math.cos(pitch)*d,Math.sin(pitch)*d,Math.cos(y)*Math.cos(pitch)*d);cam.lookAt(0,0,0);}
+let yaw=0.7,pitch=0.95,dist=54;
+let intro=1,camX=CX,camZ=CZ,twist0=0,yaw0=0; // intro: opening camera swoop 1 -> 0; camX/camZ: the spot the camera looks at
+function placeCam(){const e=intro*intro,y=yaw-e*1.6,d=dist+e*26;cam.position.set(camX+Math.sin(y)*Math.cos(pitch)*d,Math.sin(pitch)*d,camZ+Math.cos(y)*Math.cos(pitch)*d);cam.lookAt(camX,0,camZ);}
 const ptrs=new Map();let moved=0,pinch0=0,dist0=0;
 const cv=renderer.domElement;
 function pickAt(x,y){v2.set(x/innerWidth*2-1,-(y/innerHeight)*2+1);ray.setFromCamera(v2,cam);
@@ -277,7 +370,7 @@ let paint=null,painted={}; // paint = 'plant' or 'harvest' while a finger drags 
 cv.addEventListener('pointerdown',e=>{audio();ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});moved=0;paint=null;painted={};
   if(ptrs.size===1){const u=pickAt(e.clientX,e.clientY);
     if(u&&(u.type==='plot'||u.type==='crop')&&S.owned.includes(u.k)){if(isRipe(u.k))paint='harvest';else if(!S.plots[u.k])paint='plant';}}
-  if(ptrs.size===2){paint=null;const [a,b]=[...ptrs.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);dist0=dist;}});
+  if(ptrs.size===2){paint=null;const [a,b]=[...ptrs.values()];pinch0=Math.hypot(a.x-b.x,a.y-b.y);dist0=dist;twist0=Math.atan2(b.y-a.y,b.x-a.x);yaw0=yaw;}});
 function paintAt(x,y){const u=pickAt(x,y);if(!u||(u.type!=='plot'&&u.type!=='crop'))return;const k=u.k;if(painted[k]||!S.owned.includes(k))return;
   if(paint==='harvest'&&isRipe(k)){painted[k]=1;doHarvest(k);refresh();}
   else if(paint==='plant'&&!S.plots[k]){painted[k]=1;if(doPlant(k))refresh();else paint=null;}}
@@ -285,12 +378,14 @@ cv.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p)return
   const dx=e.clientX-p.x,dy=e.clientY-p.y;
   if(ptrs.size===1){moved+=Math.abs(dx)+Math.abs(dy);
     if(paint){if(moved>10)paintAt(e.clientX,e.clientY);}
-    else{yaw-=dx*0.006;pitch=Math.min(1.35,Math.max(0.35,pitch+dy*0.004));}}
+    else{const k=dist*0.0017,c=Math.cos(yaw),sn=Math.sin(yaw); // drag = slide the camera over the farm
+      camX=Math.min(26,Math.max(-18,camX-(c*dx+sn*dy)*k));camZ=Math.min(18,Math.max(-20,camZ-(-sn*dx+c*dy)*k));}}
   p.x=e.clientX;p.y=e.clientY;
-  if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);dist=Math.min(62,Math.max(12,dist0*pinch0/d));moved=99;}});
+  if(ptrs.size===2){const [a,b]=[...ptrs.values()];const d=Math.hypot(a.x-b.x,a.y-b.y);dist=Math.min(75,Math.max(12,dist0*pinch0/d));
+    let tw=Math.atan2(b.y-a.y,b.x-a.x)-twist0;tw=Math.atan2(Math.sin(tw),Math.cos(tw));yaw=yaw0-tw;moved=99;}});
 const up=e=>{const wasTap=ptrs.size===1&&moved<10;ptrs.delete(e.pointerId);paint=null;if(wasTap)tap(e.clientX,e.clientY);};
 cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',e=>ptrs.delete(e.pointerId));
-cv.addEventListener('wheel',e=>{dist=Math.min(62,Math.max(12,dist+e.deltaY*0.02));});
+cv.addEventListener('wheel',e=>{dist=Math.min(75,Math.max(12,dist+e.deltaY*0.02));});
 
 // ===== Tapping things =====
 const ray=new THREE.Raycaster(),v2=new THREE.Vector2();
@@ -298,12 +393,16 @@ function tap(x,y){const u=pickAt(x,y);if(!u)return;
   if(u.type==='plot'||u.type==='crop')return tapPlot(u.k);
   if(u.type==='barn')return SFX.tap(),openBarn();
   if(u.type==='board')return SFX.tap(),openOrders();
-  if(u.type==='bakery')return SFX.tap(),openBakery();
+  if(u.type==='bakery')return SFX.tap(),openBld(u.b||'bakery');
+  if(u.type==='animal')return tapAnimal(u.kind,u.i);
+  if(u.type==='pasture')return SFX.tap(),openShop();
+  if(u.type==='orch')return tapOrch(u.i);
+  if(u.type==='pond')return tapPond();
   if(u.type==='coop')return SFX.tap(),openShop();
   if(u.type==='stand')return SFX.tap(),openStand();
   if(u.type==='neighbor')return SFX.tap(),toast(u.n+': "Lovely farm! I shop at your roadside stand."');
   if(u.type==='hen')return tapHen(u.g);}
-function doHarvest(k){const p=S.plots[k],c=CROPS[p.type];S.barn[p.type]=(S.barn[p.type]||0)+2;S.xp+=c.xp;delete S.plots[k];
+function doHarvest(k){const p=S.plots[k],c=CROPS[p.type];S.barn[p.type]=(S.barn[p.type]||0)+2;S.xp+=c.xp;S.st.harv+=2;delete S.plots[k];
   SFX.harvest();buzz(15);burst(kpos(k),c.color,18);burst(kpos(k),0xffffff,6);floatText('+2 '+c.icon,kpos(k));}
 function doPlant(k){const c=CROPS[S.tool];
   if(level()<c.lvl){SFX.nope();toast(c.name+' unlocks at level '+c.lvl);return false;}
@@ -319,7 +418,7 @@ function tapPlot(k){
     return refresh();}
   doPlant(k);refresh();}
 function tapHen(g){const i=henObjs.indexOf(g),h=S.hens[i];
-  if(now()-h>=EGG.time){S.hens[i]=now();S.barn.egg=(S.barn.egg||0)+1;S.xp+=EGG.xp;SFX.cluck();SFX.harvest();buzz(15);burst(g.position,0xfff3d6,10);floatText('+1 🥚',g.position);}
+  if(now()-h>=EGG.time){S.hens[i]=now();S.barn.egg=(S.barn.egg||0)+1;S.xp+=EGG.xp;S.st.prod++;SFX.cluck();SFX.harvest();buzz(15);burst(g.position,0xfff3d6,10);floatText('+1 🥚',g.position);}
   else SFX.cluck(),toast('🐔 egg in '+Math.ceil(EGG.time-(now()-h))+'s');refresh();}
 
 // ===== Menus =====
@@ -327,37 +426,104 @@ const modal=document.getElementById('modal'),mbox=document.getElementById('mbox'
 modal.onclick=e=>{if(e.target===modal)closeModal();};
 function closeModal(){modal.style.display='none';}
 window.appBack=()=>{if(modal.style.display==='flex'){closeModal();return true;}return false;};
-function itemInfo(k){return k==='egg'?EGG:CROPS[k]||RECIPES[k];}
+function itemInfo(k){return k==='egg'?EGG:CROPS[k]||RECIPES[k]||GOODS[k];}
 function openBarn(){let total=0,rows='';
   for(const k in S.barn){if(!S.barn[k])continue;const it=itemInfo(k),v=S.barn[k]*it.sell;total+=v;
     rows+=`<div class="row"><span>${it.icon} ${it.name} × ${S.barn[k]}</span><span>🪙 ${v}</span></div>`;}
   mbox.innerHTML=`<h2>🏠 Barn</h2>${rows||'<p class="muted">Empty. Harvest ripe crops (they glow) to fill it.</p>'}
    <p style="display:flex;gap:8px;justify-content:flex-end"><button onclick="closeModal()" style="background:var(--btn);color:var(--text)">Close</button>
    <button ${total?'':'disabled'} onclick="sellAll()">Sell all 🪙 ${total}</button></p>`;modal.style.display='flex';}
-window.sellAll=()=>{let t=0;for(const k in S.barn){t+=S.barn[k]*itemInfo(k).sell;}S.barn={};S.coins+=t;S.sold=1;SFX.coin();buzz(25);toast('Sold for 🪙'+t);closeModal();coinFly();refresh();};
+window.sellAll=()=>{let t=0;for(const k in S.barn){t+=S.barn[k]*itemInfo(k).sell;}S.barn={};S.coins+=t;S.st.coin+=t;S.sold=1;SFX.coin();buzz(25);toast('Sold for 🪙'+t);closeModal();coinFly();refresh();};
+const anCost=k=>Math.round(ANIMALS[k].cost*(1+0.5*S.an[k].length));
 function openShop(){const henCost=40+S.hens.length*25;
-  mbox.innerHTML=`<h2>🐔 Coop</h2>
-   ${S.coop?'':'<div class="row"><span>Build the coop</span><button onclick="buy(\'coop\')">🪙 60</button></div>'}
-   <div class="row"><span>Buy a hen (${S.hens.length}/6)<br><span class="muted">Lays an egg every minute</span></span>
-   <button ${S.coop&&S.hens.length<6?'':'disabled'} onclick="buy('hen')">🪙 ${henCost}</button></div>
-   <p class="muted">Tap a hen with an egg above her head to collect it.</p>
+  let h=`<h2>🐄 Animals</h2>
+   ${S.coop?'':'<div class="row"><span>Build the chicken coop</span><button onclick="buy(\'coop\')">🪙 60</button></div>'}
+   <div class="row"><span>🐔 Hen (${S.hens.length}/6)<br><span class="muted">🥚 Egg every 60s</span></span>
+   <button ${S.coop&&S.hens.length<6?'':'disabled'} onclick="buy('hen')">🪙 ${henCost}</button></div>`;
+  for(const k in ANIMALS){const A=ANIMALS[k],n=S.an[k].length,lock=level()<A.lvl;
+    h+=`<div class="row"><span>${A.icon} ${A.name} (${n}/4)<br><span class="muted">${lock?'🔒 Level '+A.lvl:GOODS[A.prod].icon+' '+GOODS[A.prod].name+' every '+A.time+'s'}</span></span>
+     <button ${!lock&&n<4?'':'disabled'} onclick="buy('${k}')">🪙 ${anCost(k)}</button></div>`;}
+  mbox.innerHTML=h+`<p class="muted">Animals live in the pasture on the right. Tap one with an icon above it to collect.</p>
    <p style="text-align:right"><button onclick="closeModal()">Done</button></p>`;modal.style.display='flex';}
 window.buy=w=>{if(w==='coop'){if(S.coins<60)return SFX.nope(),toast('Need 🪙60');S.coins-=60;S.coop=true;}
-  else{const c=40+S.hens.length*25;if(S.coins<c)return SFX.nope(),toast('Need 🪙'+c);S.coins-=c;S.hens.push(now()-EGG.time);}
+  else if(w==='hen'){const c=40+S.hens.length*25;if(S.coins<c)return SFX.nope(),toast('Need 🪙'+c);S.coins-=c;S.hens.push(now()-EGG.time);}
+  else{const c=anCost(w);if(S.an[w].length>=4||level()<ANIMALS[w].lvl)return SFX.nope();if(S.coins<c)return SFX.nope(),toast('Need 🪙'+c);S.coins-=c;S.an[w].push(now()-ANIMALS[w].time*0.5);}
   SFX.buy();syncHens();refresh();openShop();};
+// ----- cows, sheep and pigs: artist-made animated models that wander around the pasture -----
+const anObjs=[];let modelsReady=false;
+function syncAnimals(){if(!modelsReady)return;for(const kind in ANIMALS)S.an[kind].forEach((t,i)=>{if(anObjs.find(o=>o.kind===kind&&o.i===i))return;const A=ANIMALS[kind];
+  let g=inst(A.model,A.h);if(!g){g=new THREE.Group();const b=box(0.8,0.8,1.4,0xffffff);b.position.y=0.6;g.add(b);}
+  g.traverse(o=>{if(o.isSkinnedMesh)o.frustumCulled=false;if(o!==g)o.userData={type:'animal',kind,i};});
+  const a=Math.random()*6.283,r=Math.random()*PAST.r*0.75;g.position.set(PAST.x+Math.cos(a)*r,0,PAST.z+Math.sin(a)*r);g.rotation.y=Math.random()*6.283;scene.add(g);
+  const o={kind,i,g,wait:Math.random()*4,tx:g.position.x,tz:g.position.z,moving:false};
+  const clips=g.userData.clips||[];if(clips.length){o.mix=new THREE.AnimationMixer(g.userData.root);const cl=n=>clips.find(c=>c.name.endsWith('|'+n));
+    o.idle=cl('Idle')?o.mix.clipAction(cl('Idle')):null;o.walk=cl('Walk')?o.mix.clipAction(cl('Walk')):null;if(o.idle)o.idle.play();}
+  anObjs.push(o);});}
+function updateAnimals(time,dt){for(const o of anObjs){const g=o.g,A=ANIMALS[o.kind];if(o.mix)o.mix.update(dt);
+  if(o.wait>0){o.wait-=dt;if(o.wait<=0){const a=Math.random()*6.283,r=Math.random()*PAST.r*0.8;o.tx=PAST.x+Math.cos(a)*r;o.tz=PAST.z+Math.sin(a)*r;o.moving=true;
+      if(o.walk){o.walk.reset().fadeIn(0.3).play();if(o.idle)o.idle.fadeOut(0.3);}}}
+  else{const dx=o.tx-g.position.x,dz=o.tz-g.position.z,d=Math.hypot(dx,dz);
+    if(d<0.15){o.wait=2+Math.random()*6;o.moving=false;if(o.walk){o.walk.fadeOut(0.3);if(o.idle)o.idle.reset().fadeIn(0.3).play();}}
+    else{const sp=0.7*dt;g.position.x+=dx/d*sp;g.position.z+=dz/d*sp;let da=Math.atan2(dx,dz)-g.rotation.y;da=Math.atan2(Math.sin(da),Math.cos(da));g.rotation.y+=da*Math.min(1,dt*4);}}
+  g.position.y=o.moving&&!o.walk?Math.abs(Math.sin(time*7+o.i))*0.1:0;
+  const ready=now()-S.an[o.kind][o.i]>=A.time;tp.copy(g.position);tp.y=A.h+0.9;tag('an'+o.kind+o.i,tp,ready?'<span>'+GOODS[A.prod].icon+'</span>':null,'ready');}}
+function tapAnimal(kind,i){const A=ANIMALS[kind],G=GOODS[A.prod],t=S.an[kind][i],o=anObjs.find(o=>o.kind===kind&&o.i===i);
+  if(now()-t>=A.time){S.an[kind][i]=now();S.barn[A.prod]=(S.barn[A.prod]||0)+1;S.xp+=G.xp;S.st.prod++;SFX.cluck();SFX.harvest();buzz(15);if(o){burst(o.g.position,0xffffff,10);floatText('+1 '+G.icon,o.g.position);}}
+  else SFX.tap(),toast(A.icon+' '+G.name+' in '+Math.ceil(A.time-(now()-t))+'s');refresh();}
+// ----- orchard: fruit trees and bushes give fruit again and again -----
+function updateOrch(){orchObjs.forEach((ob,i)=>{const s=S.orch[i],F=s&&FRUIT[s.f],ready=!!s&&now()-s.t>=F.time,key=s?s.f+(ready?'_4':'_Harvested'):'';
+  if(key!==ob.key){ob.key=key;if(ob.m){ob.g.remove(ob.m);ob.m=null;}if(s){ob.m=inst(F.model+(ready?'_4':'_Harvested'),F.h);if(ob.m){ob.m.traverse(o=>{o.userData={type:'orch',i};});ob.g.add(ob.m);}}}
+  tp.copy(ob.g.position);tp.y=(F?F.h:0)+0.9;tag('or'+i,tp,ready?'<span>'+F.icon+'</span>':null,'ready');});}
+function tapOrch(i){const s=S.orch[i];
+  if(!s){SFX.tap();let h='<h2>🌳 Orchard</h2><p class="muted">Plant once, pick fruit again and again.</p>';
+    for(const f in FRUIT){const F=FRUIT[f],lock=level()<F.lvl;h+=`<div class="row"><span>${F.icon} ${F.name}<br><span class="muted">${lock?'🔒 Level '+F.lvl:F.n+' fruit every '+F.time+'s'}</span></span><button ${lock?'disabled':''} onclick="plantTree(${i},'${f}')">🪙 ${F.cost}</button></div>`;}
+    mbox.innerHTML=h+'<p style="text-align:right"><button onclick="closeModal()">Close</button></p>';modal.style.display='flex';return;}
+  const F=FRUIT[s.f];
+  if(now()-s.t>=F.time){s.t=now();S.barn[s.f]=(S.barn[s.f]||0)+F.n;S.xp+=GOODS[s.f].xp*F.n;S.st.fruit+=F.n;SFX.harvest();buzz(15);burst(orchObjs[i].g.position,0xff7043,14);floatText('+'+F.n+' '+F.icon,orchObjs[i].g.position);}
+  else SFX.tap(),toast(F.icon+' ready in '+Math.ceil(F.time-(now()-s.t))+'s');refresh();}
+window.plantTree=(i,f)=>{const F=FRUIT[f];if(S.orch[i]||level()<F.lvl)return SFX.nope();if(S.coins<F.cost)return SFX.nope(),toast('Need 🪙'+F.cost);
+  S.coins-=F.cost;S.orch[i]={f,t:now()};SFX.buy();burst(orchObjs[i].g.position,0x8fd066,16);closeModal();refresh();};
+// ----- fishing in the pond -----
+function tapPond(){const left=90-(now()-S.fishT);
+  if(left<=0){const n=Math.random()<0.3?2:1;S.fishT=now();S.barn.fish=(S.barn.fish||0)+n;S.xp+=GOODS.fish.xp*n;S.st.fish+=n;SFX.plant();SFX.harvest();buzz(15);burst(water.position,0x9be7ff,16);floatText('+'+n+' 🐟',water.position);}
+  else SFX.tap(),toast('🎣 The fish need '+Math.ceil(left)+'s to come back');refresh();}
+// ----- decorations: artist-made landmarks you can buy for your farm -----
+const decorPlaced={};
+function syncDecor(){if(!modelsReady)return;for(const d of DECOR){if(!S.decor[d.id]||decorPlaced[d.id])continue;const m=inst(d.model,d.h);if(!m)continue;m.position.set(d.pos[0],0,d.pos[1]);scene.add(m);decorPlaced[d.id]=m;}}
+function openBuild(){let h='<h2>🏗️ Build</h2><p class="muted">Workshops</p>';
+  for(const id in BLD){const B=BLD[id],lock=level()<B.lvl,built=S.bld[id].built;
+    h+=`<div class="row"><span>${B.icon} ${B.name}<br><span class="muted">${built?'Built':lock?'🔒 Level '+B.lvl:'Makes goods worth much more'}</span></span>
+     ${built?`<button onclick="openBld('${id}')">Open</button>`:`<button ${lock?'disabled':''} onclick="buildBld('${id}')">🪙 ${B.cost}</button>`}</div>`;}
+  h+='<p class="muted">Decorations</p>';
+  for(const d of DECOR){const lock=level()<d.lvl,own=S.decor[d.id];
+    h+=`<div class="row"><span>${d.icon} ${d.name}<br><span class="muted">${own?'On your farm':lock?'🔒 Level '+d.lvl:'+'+Math.round(d.cost/10)+' XP'}</span></span>
+     <button ${own||lock?'disabled':''} onclick="buyDecor('${d.id}')">${own?'✓':'🪙 '+d.cost}</button></div>`;}
+  mbox.innerHTML=h+'<p style="text-align:right"><button onclick="closeModal()">Close</button></p>';modal.style.display='flex';}
+window.openBuild=openBuild;
+window.buyDecor=id=>{const d=DECOR.find(d=>d.id===id);if(S.decor[id]||level()<d.lvl)return SFX.nope();if(S.coins<d.cost)return SFX.nope(),toast('Need 🪙'+d.cost);
+  S.coins-=d.cost;S.decor[id]=true;S.xp+=Math.round(d.cost/10);SFX.buy();buzz(40);syncDecor();burst(new THREE.Vector3(d.pos[0],1,d.pos[1]),0xffd23f,40);refresh();if(modal.style.display==='flex'&&mbox.textContent.includes('Workshops'))openBuild();};
+// ----- achievements -----
+const statVal=s=>s==='ord'?S.done:S.st[s]||0,achReady=()=>ACH.some(a=>!S.ach[a.id]&&statVal(a.s)>=a.g);
+function openAch(){let h='<h2>🏆 Goals</h2>';
+  for(const a of ACH){const v=Math.min(statVal(a.s),a.g),got=S.ach[a.id],ok=v>=a.g;
+    h+=`<div class="row"><span><b>${a.name}</b><br><span class="muted">${a.d} · ${v}/${a.g}</span><span id="xpw" style="width:150px"><span style="display:block;height:100%;background:var(--accent);width:${Math.round(v/a.g*100)}%"></span></span></span>
+     <button ${ok&&!got?'':'disabled'} onclick="claimAch('${a.id}')">${got?'✓':'🪙 '+a.r}</button></div>`;}
+  mbox.innerHTML=h+'<p style="text-align:right"><button onclick="closeModal()">Close</button></p>';modal.style.display='flex';}
+window.openAch=openAch;
+window.claimAch=id=>{const a=ACH.find(a=>a.id===id);if(S.ach[id]||statVal(a.s)<a.g)return;S.ach[id]=1;S.coins+=a.r;SFX.level();buzz(40);coinFly();refresh();openAch();};
 
 // ===== Bottom bar =====
 const bar=document.getElementById('bar');
 function drawBar(){let h='';
   for(const k in CROPS){const c=CROPS[k],lock=level()<c.lvl;
     h+=`<button class="${S.tool===k?'on':''}" onclick="pick('${k}')"><b>${lock?'🔒':c.icon}</b>${lock?'Lv '+c.lvl:'🪙'+c.cost}</button>`;}
-  h+=`<button onclick="openOrders()"><b>📋</b>Orders</button><button onclick="openStand()"><b>🏪</b>Stand</button><button onclick="openBakery()"><b>🥖</b>Bakery</button><button onclick="openBarn()"><b>🏠</b>Barn</button><button onclick="openShop()"><b>🐔</b>Coop</button><button onclick="help()"><b>❓</b>Help</button>`;
+  h+=`<button onclick="openOrders()"><b>📋</b>Orders</button><button onclick="openStand()"><b>🏪</b>Stand</button><button onclick="openShop()"><b>🐄</b>Animals</button><button onclick="openBuild()"><b>🏗️</b>Build</button><button onclick="openBarn()"><b>🏠</b>Barn</button><button onclick="openAch()"><b>🏆</b>Goals${achReady()?' ❗':''}</button><button onclick="help()"><b>❓</b>Help</button>`;
   bar.innerHTML=h;}
 window.pick=k=>{SFX.tap();S.tool=k;drawBar();const c=CROPS[k];toast(`${c.icon} ${c.name}: grows in ${c.time}s, sells for 🪙${c.sell} each`);};
 window.help=()=>{mbox.innerHTML=`<h2>How to play</h2><p>1. Pick a seed at the bottom, then tap a brown field to plant it. Drag across several fields to plant or harvest them all in one swipe.</p>
   <p>2. Wait until the crop glows, then tap it to harvest (you get 2).</p><p>3. Tap the red barn and sell your harvest for coins.</p>
-  <p>4. Tap the light green squares to buy more land. Build a coop and buy hens for eggs.</p><p>5. Put crates on the 🏪 roadside Stand: neighbours walking past will buy them, even while the game is closed.</p><p>Also open 📋 Orders: customers pay extra for deliveries. Build the 🥖 Bakery to turn crops into goods worth much more.</p><p>6. Level up to unlock carrots, corn and pumpkins.</p>
-  <p class="muted">Drag on the grass to turn the camera, pinch to zoom. Crops keep growing while the app is closed.</p>
+  <p>4. Tap the light green squares to buy more land. Build a coop and buy hens for eggs.</p><p>5. Put crates on the 🏪 roadside Stand: neighbours walking past will buy them, even while the game is closed.</p><p>Also open 📋 Orders: customers pay extra for deliveries. Build the 🥖 Bakery to turn crops into goods worth much more.</p><p>6. 🐄 Animals live in the pasture, 🌳 fruit trees grow on the brown circles, and you can fish in the pond. 🏗️ Build adds workshops and decorations.</p><p>7. Level up to unlock more crops, animals and buildings. Check 🏆 Goals for rewards.</p>
+  <p class="muted">Drag on the grass to move around the farm, pinch to zoom, twist two fingers to turn. Crops keep growing while the app is closed.</p>
   <p style="text-align:right"><button onclick="closeModal()">Let's farm!</button></p>`;modal.style.display='flex';};
 window.openBarn=openBarn;window.openShop=openShop;window.closeModal=closeModal;
 
@@ -418,10 +584,13 @@ document.addEventListener('click',e=>{audio();if(e.target.closest&&e.target.clos
 
 // ===== Orders: customers ask for goods and pay more than the barn =====
 const NAMES=['Farmer Ada','Baker Milo','Chef Ines','Granny Opal','Miller Tom','Nurse Juno','Captain Reed','Teacher Lio'];
-function newOrder(){const L=level(),pool=Object.keys(CROPS).filter(k=>CROPS[k].lvl<=L);if(S.hens.length)pool.push('egg');if(S.bakery)for(const r in RECIPES)if(RECIPES[r].lvl<=L)pool.push(r);
+function newOrder(){const L=level(),pool=Object.keys(CROPS).filter(k=>CROPS[k].lvl<=L);if(S.hens.length)pool.push('egg');
+  for(const r in RECIPES)if(RECIPES[r].lvl<=L&&S.bld[RECIPES[r].b].built)pool.push(r);
+  for(const k in ANIMALS)if(S.an[k].length)pool.push(ANIMALS[k].prod);S.orch.forEach(o=>{if(o&&!pool.includes(o.f))pool.push(o.f);});if(S.st.fish)pool.push('fish');
+  const big=L>=4&&Math.random()<0.2; // a market truck: three times the goods, better pay
   const need={},n=pool.length>1&&Math.random()<0.6?2:1;let val=0,xp=0;
-  for(let i=0;i<n;i++){const k=pool[Math.random()*pool.length|0];if(need[k])continue;const q=RECIPES[k]?1+(Math.random()*2|0):2+(Math.random()*(2+Math.min(L,6))|0);need[k]=q;val+=q*itemInfo(k).sell;xp+=q*itemInfo(k).xp;}
-  return {who:NAMES[Math.random()*NAMES.length|0],need,coins:Math.round(val*1.6/5)*5+5,xp:Math.ceil(xp*0.6)+2};}
+  for(let i=0;i<n;i++){const k=pool[Math.random()*pool.length|0];if(need[k])continue;const q=(RECIPES[k]?1+(Math.random()*2|0):2+(Math.random()*(2+Math.min(L,6))|0))*(big?3:1);need[k]=q;val+=q*itemInfo(k).sell;xp+=q*itemInfo(k).xp;}
+  return {who:big?'🚚 Market truck':NAMES[Math.random()*NAMES.length|0],need,coins:Math.round(val*(big?2.2:1.6)/5)*5+5,xp:Math.ceil(xp*0.6)+2};}
 function fillOrders(){while(S.orders.length<3)S.orders.push(newOrder());}
 function canDo(o){for(const k in o.need)if((S.barn[k]||0)<o.need[k])return false;return true;}
 function openOrders(){fillOrders();let h='<h2>📋 Orders</h2><p class="muted">Deliver from your barn. Orders pay 60% more than selling.</p>';
@@ -432,12 +601,12 @@ function openOrders(){fillOrders();let h='<h2>📋 Orders</h2><p class="muted">D
       <button onclick="skipOrder(${i})" style="background:var(--btn);color:var(--text);padding:4px 8px;font-size:12px">Skip</button></span></div>`;});
   mbox.innerHTML=h+`<p class="muted">Delivered so far: ${S.done}</p><p style="text-align:right"><button onclick="closeModal()">Close</button></p>`;modal.style.display='flex';}
 window.deliver=i=>{const o=S.orders[i];if(!canDo(o))return SFX.nope();for(const k in o.need)S.barn[k]-=o.need[k];
-  S.coins+=o.coins;S.xp+=o.xp;S.done++;S.sold=1;S.orders.splice(i,1);SFX.coin();coinFly();buzz(30);burst(board.position,0xffd54a,24);toast(o.who+' paid 🪙'+o.coins+'  (+'+o.xp+' XP)');
+  S.coins+=o.coins;S.st.coin+=o.coins;S.xp+=o.xp;S.done++;S.sold=1;S.orders.splice(i,1);SFX.coin();coinFly();buzz(30);burst(board.position,0xffd54a,24);toast(o.who+' paid 🪙'+o.coins+'  (+'+o.xp+' XP)');
   openOrders();refresh();};
 window.skipOrder=i=>{S.orders.splice(i,1);openOrders();save();};
 window.openOrders=openOrders;
 function levelUp(L){const bonus=10*L;S.coins+=bonus;SFX.level();buzz(60);burst(new THREE.Vector3(0,1,0),0xffd54a,40);burst(new THREE.Vector3(0,1,0),0xff6fa5,25);
-  coinFly();const un=Object.values(CROPS).concat(L===2?[{lvl:2,icon:'🥖',name:'Bakery (tap the building site)'}]:[]).filter(c=>c.lvl===L).map(c=>`<p>🔓 New seed unlocked: <b>${c.icon} ${c.name}</b></p>`).join('');
+  coinFly();const un=[...Object.values(CROPS),...Object.values(ANIMALS),...Object.values(FRUIT),...Object.values(BLD),...DECOR].filter(c=>c.lvl===L).map(c=>`<p>🔓 Unlocked: <b>${c.icon} ${c.name}</b></p>`).join('');
   mbox.innerHTML=`<h2 style="text-align:center;font-size:28px">🎉 Level ${L}!</h2><p style="text-align:center">Reward: <b>🪙 ${bonus}</b></p>${un}
     <p style="text-align:center"><button onclick="closeModal()">Great!</button></p>`;modal.style.display='flex';
   document.getElementById('coins').textContent='🪙 '+S.coins;}
@@ -454,36 +623,39 @@ function coinFly(){const r=document.getElementById('coins').getBoundingClientRec
     d.style.transform='translate('+(innerWidth/2+(Math.random()-0.5)*140)+'px,'+(innerHeight/2+(Math.random()-0.5)*140)+'px)';document.body.appendChild(d);
     setTimeout(()=>{d.style.transform='translate('+(r.left+8)+'px,'+r.top+'px) scale(.5)';d.style.opacity=.3;},40+i*45);setTimeout(()=>d.remove(),760+i*45);}}
 
-// ===== Bakery: turn crops into goods that sell for much more =====
-let bkShown='';
-const ovenDone=o=>now()-o.t>=RECIPES[o.r].time;
-function openBakery(){
-  if(!S.bakery){const ok=level()>=2;
-    mbox.innerHTML=`<h2>🥖 Bakery</h2><p>Bake bread, popcorn, cake and pie. Baked goods sell for much more than raw crops.</p>
-     <div class="row"><span>Build the bakery<br><span class="muted">${ok?'Ready to build':'Needs level 2'}</span></span><button ${ok?'':'disabled'} onclick="buildBakery()">🪙 80</button></div>
+// ===== Workshops (bakery, dairy, kitchen): turn raw goods into products that sell for much more =====
+const made=o=>now()-o.t>=RECIPES[o.r].time;let bkShown='';
+function openBld(id){const B=BLD[id],st=S.bld[id];
+  if(!st.built){const ok=level()>=B.lvl;
+    mbox.innerHTML=`<h2>${B.icon} ${B.name}</h2><p>Products made here sell for much more than raw goods.</p>
+     <div class="row"><span>Build the ${B.name.toLowerCase()}<br><span class="muted">${ok?'Ready to build':'Needs level '+B.lvl}</span></span><button ${ok?'':'disabled'} onclick="buildBld('${id}')">🪙 ${B.cost}</button></div>
      <p style="text-align:right"><button onclick="closeModal()">Close</button></p>`;modal.style.display='flex';return;}
-  bkShown=S.oven.map(ovenDone).join();
-  let h='<h2 id="bkmark">🥖 Bakery</h2><p class="muted">Ovens (2)</p>';
-  for(let i=0;i<2;i++){const o=S.oven[i];
-    if(!o)h+='<div class="row"><span class="muted">Empty oven</span><span></span></div>';
-    else{const r=RECIPES[o.r];h+=`<div class="row"><span>${r.icon} ${r.name}</span>${ovenDone(o)?`<button onclick="collectBake(${i})">Collect</button>`:`<span class="muted">⏳ ${Math.ceil(r.time-(now()-o.t))}s</span>`}</div>`;}}
+  bkShown=st.q.map(made).join();
+  let h=`<h2 id="bkmark" data-b="${id}">${B.icon} ${B.name}</h2><p class="muted">Work slots (2)</p>`;
+  for(let i=0;i<2;i++){const o=st.q[i];
+    if(!o)h+='<div class="row"><span class="muted">Empty slot</span><span></span></div>';
+    else{const r=RECIPES[o.r];h+=`<div class="row"><span>${r.icon} ${r.name}</span>${made(o)?`<button onclick="collectBake('${id}',${i})">Collect</button>`:`<span class="muted">⏳ ${Math.ceil(r.time-(now()-o.t))}s</span>`}</div>`;}}
   h+='<p class="muted">Recipes</p>';
-  for(const k in RECIPES){const r=RECIPES[k],lock=level()<r.lvl;let can=!lock&&S.oven.length<2;
+  for(const k in RECIPES){const r=RECIPES[k];if(r.b!==id)continue;const lock=level()<r.lvl;let can=!lock&&st.q.length<2;
     const ing=Object.keys(r.need).map(n=>{const have=S.barn[n]||0;if(have<r.need[n])can=false;
       return `<span style="white-space:nowrap;${have>=r.need[n]?'':'color:var(--warn)'}">${itemInfo(n).icon} ${Math.min(have,r.need[n])}/${r.need[n]}</span>`;}).join(' ');
     h+=`<div class="row"><span><b>${r.icon} ${r.name}</b> <span class="muted">🪙${r.sell} · ${r.time}s</span><br>${lock?'<span class="muted">🔒 Level '+r.lvl+'</span>':ing}</span>
-      <button ${can?'':'disabled'} onclick="bake('${k}')">Bake</button></div>`;}
+      <button ${can?'':'disabled'} onclick="bake('${k}')">${B.verb}</button></div>`;}
   mbox.innerHTML=h+'<p style="text-align:right"><button onclick="closeModal()">Close</button></p>';modal.style.display='flex';}
-window.openBakery=openBakery;
-window.buildBakery=()=>{if(S.coins<80)return SFX.nope(),toast('Need 🪙80');S.coins-=80;S.bakery=true;SFX.buy();buzz(40);burst(bakery.position,0xffd23f,40);syncHens();refresh();openBakery();};
-window.bake=k=>{const r=RECIPES[k];if(S.oven.length>=2)return SFX.nope();for(const n in r.need)if((S.barn[n]||0)<r.need[n])return SFX.nope();
-  for(const n in r.need)S.barn[n]-=r.need[n];S.oven.push({r:k,t:now()});SFX.plant();refresh();openBakery();};
-window.collectBake=i=>{const o=S.oven[i];if(!o||!ovenDone(o))return;const r=RECIPES[o.r];S.oven.splice(i,1);S.barn[o.r]=(S.barn[o.r]||0)+1;S.xp+=r.xp;
-  SFX.harvest();buzz(15);toast('+1 '+r.icon+' '+r.name+' is in your barn');refresh();if(modal.style.display==='flex'&&document.getElementById('bkmark'))openBakery();};
-setInterval(()=>{if(modal.style.display==='flex'&&document.getElementById('bkmark')&&(S.oven.some(o=>!ovenDone(o))||bkShown!==S.oven.map(ovenDone).join()))openBakery();},1000);
-anim.push(()=>{const done=S.bakery&&S.oven.find(ovenDone);tp.copy(bakery.position);tp.y=4.6;tag('bk',tp,done?'<span>'+RECIPES[done.r].icon+'</span>':null,'ready');
-  if(S.bakery&&S.oven.some(o=>!ovenDone(o))&&Math.random()<0.07){const m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color:0xdddddd,transparent:true}));
-    m.position.set(bakery.position.x+1,4.1,bakery.position.z-0.4);m.scale.setScalar(2);m.userData={vx:0.3,vy:1.1,vz:0.1,life:0.8,puff:1};scene.add(m);parts.push(m);}});
+window.openBld=openBld;window.openBakery=()=>openBld('bakery');
+window.buildBld=id=>{const B=BLD[id];if(S.bld[id].built||level()<B.lvl)return SFX.nope();if(S.coins<B.cost)return SFX.nope(),toast('Need 🪙'+B.cost);
+  S.coins-=B.cost;S.bld[id].built=true;SFX.buy();buzz(40);burst(bldObj[id].g.position,0xffd23f,40);syncBld();refresh();openBld(id);};
+window.bake=k=>{const r=RECIPES[k],q=S.bld[r.b].q;if(q.length>=2)return SFX.nope();for(const n in r.need)if((S.barn[n]||0)<r.need[n])return SFX.nope();
+  for(const n in r.need)S.barn[n]-=r.need[n];q.push({r:k,t:now()});SFX.plant();refresh();openBld(r.b);};
+window.collectBake=(id,i)=>{const q=S.bld[id].q,o=q[i];if(!o||!made(o))return;const r=RECIPES[o.r];q.splice(i,1);S.barn[o.r]=(S.barn[o.r]||0)+1;S.xp+=r.xp;S.st.made++;
+  SFX.harvest();buzz(15);toast('+1 '+r.icon+' '+r.name+' is in your barn');refresh();if(modal.style.display==='flex'&&document.getElementById('bkmark'))openBld(id);};
+setInterval(()=>{const m=document.getElementById('bkmark');if(modal.style.display!=='flex'||!m)return;const q=S.bld[m.dataset.b].q;
+  if(q.some(o=>!made(o))||bkShown!==q.map(made).join())openBld(m.dataset.b);},1000);
+anim.push(()=>{for(const id in BLD){const st=S.bld[id],ob=bldObj[id],done=st.built&&st.q.find(made);tp.copy(ob.g.position);tp.y=ob.h+0.9;
+    tag('bk'+id,tp,done?'<span>'+RECIPES[done.r].icon+'</span>':null,'ready');
+    if(st.built&&st.q.some(o=>!made(o))&&Math.random()<0.07){const m=new THREE.Mesh(pGeo,new THREE.MeshBasicMaterial({color:0xdddddd,transparent:true}));
+      m.position.set(ob.g.position.x+0.6,ob.h*0.9,ob.g.position.z-0.3);m.scale.setScalar(2);m.userData={vx:0.3,vy:1.1,vz:0.1,life:0.8,puff:1};scene.add(m);parts.push(m);}}
+  tp.copy(water.position);tp.y=1.6;tag('fish',tp,now()-S.fishT>=90?'<span>🐟</span>':null,'ready');});
 
 // ===== Roadside stand: put crates on sale and neighbours buy them over time =====
 const TIERS=[{n:'Quick',m:1,a:10,b:25,d:'sells in seconds'},{n:'Fair',m:1.3,a:40,b:90,d:'about a minute'},{n:'Top',m:1.7,a:120,b:240,d:'a few minutes'}];
@@ -505,7 +677,7 @@ window.listItem=(k,ti)=>{const T=TIERS[ti],q=Math.min(5,S.barn[k]||0);if(!q||S.s
   S.barn[k]-=q;S.stand.push({k,q,p:Math.max(1,Math.round(itemInfo(k).sell*q*T.m)),t:now(),d:T.a+Math.random()*(T.b-T.a),who:Math.random()*NEIGH.length|0,seen:0});
   SFX.plant();refresh();openStand();};
 window.unlist=i=>{const o=S.stand[i];if(!o||isSold(o))return;S.stand.splice(i,1);S.barn[o.k]=(S.barn[o.k]||0)+o.q;SFX.tap();refresh();openStand();};
-window.collectStand=i=>{const o=S.stand[i];if(!o||!isSold(o))return;S.stand.splice(i,1);S.coins+=o.p;S.xp+=1;S.sold=1;SFX.coin();buzz(25);coinFly();refresh();
+window.collectStand=i=>{const o=S.stand[i];if(!o||!isSold(o))return;S.stand.splice(i,1);S.coins+=o.p;S.st.coin+=o.p;S.xp+=1;S.sold=1;SFX.coin();buzz(25);coinFly();refresh();
   if(modal.style.display==='flex'&&document.getElementById('stmark'))openStand();};
 setInterval(()=>{if(modal.style.display==='flex'&&document.getElementById('stmark')&&stShown!==S.stand.map(isSold).join())openStand();},1000);
 anim.push(()=>{let away=0,ready=false;
@@ -533,7 +705,7 @@ function tutTick(time,dt){const tip=document.getElementById('tip');
   if(S.tut===0){if(S.tool!=='wheat'){S.tool='wheat';drawBar();}target=kpos('2,2');if(keys.length)S.tut=1;}
   else if(S.tut===1){if(!keys.length)S.tut=0;else{target=kpos(keys[0]);if(keys.some(isRipe))S.tut=2;}}
   else if(S.tut===2){const r=keys.find(isRipe);if(r)target=kpos(r);else S.tut=keys.length?1:0;}
-  else if(S.tut===3){target=barn.position.clone();target.y=3.2;if(S.sold){S.tut=4;tutHold=7;S.coins+=20;SFX.buy();coinFly();refresh();}}
+  else if(S.tut===3){target=barn.position.clone();target.y=4.6;if(S.sold){S.tut=4;tutHold=7;S.coins+=20;SFX.buy();coinFly();refresh();}}
   else if(S.tut===4){tutHold-=dt;if(tutHold<=0){S.tut=5;save();setTimeout(daily,600);}}
   arrow.visible=!!target&&modal.style.display!=='flex';
   if(target)arrow.position.set(target.x,target.y+2.8+Math.abs(Math.sin(time*4))*0.6,target.z);arrow.rotation.y=time*2;
@@ -546,17 +718,11 @@ function updateCrops(time){for(const k in plotMesh){const p=S.plots[k];
     const m=makeCrop(p.type);m.userData.type=p.type;m.position.copy(tpos(...k.split(',').map(Number)));m.position.y=0.2;
     m.traverse(o=>{if(o!==m)o.userData={type:'crop',k};});m.userData.born=time;m.userData.ph=Math.random()*6;scene.add(m);cropMesh[k]=m;}
   const c=CROPS[p.type],g=Math.min(1,(now()-p.t)/c.time),m=cropMesh[k],ripe=g>=1;
-  // pop out of the ground with a bounce, then grow smoothly
-  const age=(time-m.userData.born)/0.45,pop=age<1?age*(1+0.6*Math.sin(age*Math.PI)):1;
-  const s=(0.3+0.7*g)*pop*(ripe?1+Math.sin(time*5)*0.04:1);
-  m.scale.set(s,s*(ripe?1+Math.sin(time*5+1.5)*0.05:1),s);
-  // sway in the wind
-  m.children.forEach((pl,i)=>{pl.rotation.z=Math.sin(time*1.8+i*0.9+m.userData.ph)*(ripe?0.14:0.08);pl.rotation.x=Math.cos(time*1.3+i)*0.04;});
-  if(ripe!==m.userData.ripe){m.userData.ripe=ripe;m.traverse(o=>{if(o.material&&o.material.emissive)o.material.emissive.set(ripe?0x3a2a00:0);});}
+  animCrop(m,p,g,ripe,time,k);
   tp.copy(kpos(k));tp.y=ripe?2.3:1.9;tag(k,tp,ripe?'<span>'+c.icon+'</span>':'<i style="width:'+Math.round(g*20)*5+'%"></i>',ripe?'ready':'bar');
   if(ripe&&Math.random()<0.02){const q=kpos(k);q.x+=Math.random()-0.5;q.z+=Math.random()-0.5;burst(q,0xfff59d,1);}}}
 function updateHens(time,dt){henObjs.forEach((g,i)=>{const d=g.userData;d.t+=dt;
-  const a=d.t*0.4+i*1.7,r=1.5+Math.sin(d.t*0.3+i)*1,peck=Math.sin(d.t*0.9+i*2)>0.75;
+  const a=d.t*0.4+i*1.7,r=2.7+Math.sin(d.t*0.3+i)*0.5,peck=Math.sin(d.t*0.9+i*2)>0.75;
   g.position.set(coop.position.x+Math.cos(a)*r,peck?0:Math.abs(Math.sin(d.t*7))*0.14,coop.position.z+Math.sin(a)*r);
   g.lookAt(coop.position.x+Math.cos(a+0.1)*r,g.position.y,coop.position.z+Math.sin(a+0.1)*r);g.rotateY(-Math.PI/2);
   g.rotateZ(peck?-0.5-Math.abs(Math.sin(d.t*12))*0.35:Math.sin(d.t*7)*0.06);
@@ -565,10 +731,10 @@ function updateHens(time,dt){henObjs.forEach((g,i)=>{const d=g.userData;d.t+=dt;
 function resize(){renderer.setSize(innerWidth,innerHeight);cam.aspect=innerWidth/innerHeight;cam.updateProjectionMatrix();}
 addEventListener('resize',resize);resize();
 applyTheme();syncHens();fillOrders();document.getElementById('snd').textContent=S.mute?'🔇':'🔊';refresh();
-setTimeout(()=>{if(S.tut>=5)daily();},1500);
 let last=performance.now();
-function loop(t){const dt=Math.min(0.1,(t-last)/1000);last=t;intro=Math.max(0,intro-dt*0.6);placeCam();updateCrops(t/1000);updateHens(t/1000,dt);updateParts(dt);tutTick(t/1000,dt);for(const f of anim)f(t/1000,dt);renderer.render(scene,cam);requestAnimationFrame(loop);}
-requestAnimationFrame(loop);
+function loop(t){const dt=Math.min(0.1,(t-last)/1000);last=t;intro=Math.max(0,intro-dt*0.6);placeCam();updateCrops(t/1000);updateHens(t/1000,dt);updateAnimals(t/1000,dt);updateOrch();updateParts(dt);tutTick(t/1000,dt);for(const f of anim)f(t/1000,dt);renderer.render(scene,cam);requestAnimationFrame(loop);}
+loadModels().then(()=>{modelsReady=true;applyModels();applyTheme();syncHens();document.getElementById('load').remove();last=performance.now();requestAnimationFrame(loop);
+  setTimeout(()=>{if(S.tut>=5)daily();},1500);});
 setInterval(save,5000);
 </script>
 </body>
